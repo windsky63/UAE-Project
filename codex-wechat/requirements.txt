@@ -1,0 +1,9 @@
+# No FastAPI, ONNX, fastembed, vector model, or remote bridge service.
+pydantic>=2.8,<3
+cryptography>=41
+uiautomation>=2,<3; sys_platform == 'win32'
+pywin32>=305; sys_platform == 'win32'
+pyperclip>=1.8,<2
+psutil>=5.9,<8
+zstandard>=0.19,<1
+colorama>=0.4,<1

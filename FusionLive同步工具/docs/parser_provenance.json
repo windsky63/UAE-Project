@@ -1,0 +1,18 @@
+{
+  "source_directory": "D:\\Desktop\\项目\\idf-pipe-viewer\\idf-pipe-viewer\\scripts",
+  "files": {
+    "parse_pcf_to_json.py": {
+      "source_sha256": "2f7ced8034620810dfb157aecafc1b8b59b8581f80645eb2b662c250b444b7f4",
+      "copied_sha256": "2f7ced8034620810dfb157aecafc1b8b59b8581f80645eb2b662c250b444b7f4"
+    },
+    "parse_idf_to_json.py": {
+      "source_sha256": "9eac5d9ac678a350b70a514bc4c30f0a0ef37e9d8103cc911e9043b937470322",
+      "copied_sha256": "9eac5d9ac678a350b70a514bc4c30f0a0ef37e9d8103cc911e9043b937470322"
+    },
+    "material_split_rules.json": {
+      "source_sha256": "35817afd181a703ddcf0df24b340c6f6cebab70cac2c521af662d631a323d849",
+      "copied_sha256": "35817afd181a703ddcf0df24b340c6f6cebab70cac2c521af662d631a323d849"
+    }
+  },
+  "adaptation": "Parser copies unchanged; local_analysis uses only parse functions, never CLI main; optional lightweight classify_weld extracted from build_prefab_spools.py; full legacy prefab pipeline is not executed."
+}

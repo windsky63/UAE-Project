@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "publish_text": true,
+  "publish_briefing": true,
+  "briefing_title": "管道资料同步简报",
+  "test_recipient": "文件传输助手",
+  "recipients": [],
+  "recipient_publications": {},
+  "prepare_time_beijing": "10:40",
+  "send_time_beijing": "11:00",
+  "send_window_minutes": 5,
+  "uia_profile": "wechat_push/uia_profile.json"
+}

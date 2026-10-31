@@ -1,0 +1,5 @@
+# -*- coding: utf-8 -*-
+# Shared dependencies for every tool managed by the management center.
+-r FusionLive同步工具/requirements.txt
+-r 绿联云上传工具/requirements.txt
+-r codex-wechat/requirements.txt

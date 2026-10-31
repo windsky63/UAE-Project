@@ -1,0 +1,7 @@
+这里归档接口排查及历史验证脚本，正常同步、台账和简报功能不依赖这些脚本。
+inspect_api.py：读取有限范围的目录和清单。
+inspect_list.py、inspect_content.py：历史接口排查。
+verify_download.py：历史样本下载校验。
+probe.py、check_directory.py：目录排查的兼容入口。
+脚本保留供开发排查，不作为日常入口；需要时从工具根目录以模块方式运行，例如python -m devtools.inspect_api。
+这些诊断脚本涉及平台登录，verify_download.py还会下载样本。当前runtime/login.paused仍禁止登录，本次归档没有执行任何诊断脚本。

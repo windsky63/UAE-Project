@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codex-wechat-local"
+version = "0.1.0"
+description = "Single-machine WeChat capture, searchable archive, and Codex skill"
+requires-python = ">=3.11"
+dependencies = ["pydantic>=2.8,<3", "cryptography>=41"]
+
+[project.scripts]
+codex-wechat = "wechat_local.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["wechat_local*"]
+
+[tool.setuptools.package-data]
+"wechat_local.wechat_db" = ["LICENSE", "NOTICE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

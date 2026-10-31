@@ -1,0 +1,15 @@
+# Python 3.10+ recommended (Windows installer: include Tcl/Tk and pip).
+# Install: python -m pip install -r requirements.txt
+# Briefing generation also needs openpyxl and Pillow (no Excel installation required).
+# sqlite3, tkinter, hashlib, csv, json and unittest are Python standard library.
+# Do NOT install sqlite3 or tkinter from pip; Tcl/Tk comes with the Python installer.
+requests>=2.31,<3
+py7zr>=1.1.4,<2
+openpyxl>=3.1,<4
+Pillow>=10,<13
+pandas>=2.2,<4
+numpy>=2,<3
+uiautomation>=2,<3; sys_platform == 'win32'
+pywin32>=305; sys_platform == 'win32'
+pyperclip>=1.8,<2; sys_platform == 'win32'
+psutil>=5.9,<8; sys_platform == 'win32'

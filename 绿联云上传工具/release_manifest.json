@@ -1,0 +1,62 @@
+{
+  "format": 1,
+  "release": "2026.10.30-unified-history.1",
+  "generated_at_beijing": "2026-10-30T10:41:10.618926+08:00",
+  "editable_files": [
+    "config.json"
+  ],
+  "files": {
+    "main.py": {
+      "bytes": 15405,
+      "sha256": "7439e22d92833c68a882acf555946eaee8e841dade13bd879999d2ce00140048"
+    },
+    "nas_sync.py": {
+      "bytes": 36200,
+      "sha256": "e0a73c39a482b45e6d9b137e77729593495a606d5436ff7223a86044a36e6293"
+    },
+    "requirements.txt": {
+      "bytes": 97,
+      "sha256": "91ca20a9f9344a1361d59bf4ca8c85526033bf43d70a238375b184ff1acc3d82"
+    },
+    "test_upload.py": {
+      "bytes": 29250,
+      "sha256": "514d7bf93470dd96c0ef013dc0fba171fc263071a672d9c88c34516b6972cbc2"
+    },
+    "使用说明.txt": {
+      "bytes": 15251,
+      "sha256": "021219feba5206cc8ab3b8787da802ad743f3ee5e339ee853452722d1b3940e3"
+    },
+    "单文件上传测试.cmd": {
+      "bytes": 239,
+      "sha256": "aac5cde1b546c2387b1af92550af9af31477d6049c5602a2e26d08625ec9f636"
+    },
+    "启动每日上传.cmd": {
+      "bytes": 236,
+      "sha256": "ec47653211a6706732f53348530961e732915bd23f1db569cfb4ade0c71a03be"
+    },
+    "安全退出.cmd": {
+      "bytes": 232,
+      "sha256": "8c0f7fd3fa591684381a52be8574e2e82fdbae827f07e358e3ef6075e7c07a88"
+    },
+    "接口验证结果.json": {
+      "bytes": 1252,
+      "sha256": "4180110fd9a3acf62ac4a26481965fc41688d279c2e1a2396d6ad2080a855e27"
+    },
+    "检查程序完整性.cmd": {
+      "bytes": 237,
+      "sha256": "3cc4ede0f49e41d59b95433e417213aa211794377a6b2a51411d29657b9401a6"
+    },
+    "检查连接与清单.cmd": {
+      "bytes": 233,
+      "sha256": "3af48acd368c573391561bcb026b4925fc84c1f8323d105fead474880873793d"
+    },
+    "nas_history.py": {
+      "bytes": 9838,
+      "sha256": "42f53cfcdc284a8bc0f2fc000d19f11cf72f6fb250a2ac6d78a64c1935dc99be"
+    },
+    "test_nas_history.py": {
+      "bytes": 10083,
+      "sha256": "4b74f08271cd09d4325f2f8282f18642af1e8a422e0c6e314de6c4f1b368a435"
+    }
+  }
+}

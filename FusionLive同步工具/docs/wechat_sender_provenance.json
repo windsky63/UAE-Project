@@ -1,0 +1,11 @@
+{
+  "source_root": "D:\\Desktop\\语言模型助手\\legacy-system",
+  "source_files": {
+    "assistant/wechat_uia.py": "f7ff00b17b8cdaa2322aac9e5c110647608eda3dca404f798532377dc88d384a",
+    "assistant/delivery.py": "717e3eefb4a3bc51289225c4fd66dd09f428fa7098f956f27b036b6795f71ef3",
+    "data/wechat-uia-profile.json": "f52f230f43d8e8e1960e522552082cc90ca1305a7b84dc6906ce5dd5223a6bca"
+  },
+  "extracted": "Exact chat lookup, empty draft checks, UIA profile validation and send-only behavior. No receiver/listener or decrypted chat database copied.",
+  "adaptations": "Native PNG bitmap sender supporting explicit image preview confirmation and a single inline image draft; durable text-then-image daily journal; partial-result snapshot freezing and Beijing scheduler; foreground compatibility for background processes.",
+  "verification": "2026-10-23: real local text and PNG sends to File Transfer Assistant only, including the ordered text-then-Excel-rendered-notice sequence; offline clock/retry/dedup tests. No FusionLive login/download performed; no overnight real 11:00 run."
+}

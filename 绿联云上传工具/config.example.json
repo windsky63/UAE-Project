@@ -1,0 +1,10 @@
+{
+  "source_root": "",
+  "download_ledger": "",
+  "target_root": "",
+  "start_hour_beijing": 12,
+  "stop_hour_beijing": 0,
+  "chunk_bytes": 1048576,
+  "retry_attempts": 2,
+  "preserve_previous_versions": true
+}

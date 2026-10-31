@@ -1,0 +1,14 @@
+runtime/
+__pycache__/
+.env
+downloads/
+文件台账.csv
+文件台账.csv.tmp
+项目总体文件目录.txt
+项目总体文件目录.txt.tmp
+本次盘点变更.csv
+本次盘点变更.csv.tmp
+
+logs/
+exports/
+local_credentials.py

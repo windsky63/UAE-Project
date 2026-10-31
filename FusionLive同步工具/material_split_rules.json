@@ -1,0 +1,878 @@
+[
+  {
+    "materialCode": "A105CE/8825CE",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "A105CE8825CE",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "A106CE8825CE",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "15CrMoCEIII",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "304/304LIII",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "WPBCE8825CE",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "15CrMoGIII",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "Q235BCF370",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "12Cr1MoVG",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "12Cr5MoNT",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "15CrMoIII",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "316/F316L",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "A105/PTFE",
+    "splitRule": "N/A"
+  },
+  {
+    "materialCode": "A106/PTFE",
+    "splitRule": "N/A"
+  },
+  {
+    "materialCode": "L245API5L",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "Q235B/304",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "ZECOR310M",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "12Cr1MoV",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "12Cr2Mo1",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "15CrMoCE",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "15CrMoII",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "16MnDIII",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "20/CF415",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "20GLA105",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "304/2200",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "304/304L",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "304/PTFE",
+    "splitRule": "N/A"
+  },
+  {
+    "materialCode": "304L/304",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "316/316L",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "A106/A53",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "CF415KCE",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "CS/RPTFE",
+    "splitRule": "N/A"
+  },
+  {
+    "materialCode": "FRP/CPVC",
+    "splitRule": "N/A"
+  },
+  {
+    "materialCode": "Q235B3PE",
+    "splitRule": "N/A"
+  },
+  {
+    "materialCode": "WPB/PTFE",
+    "splitRule": "N/A"
+  },
+  {
+    "materialCode": "12Cr5Mo",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "14Cr1Mo",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "15CrMoG",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "15CrMoR",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "16MnDII",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "16MnIII",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "20/PTFE",
+    "splitRule": "N/A"
+  },
+  {
+    "materialCode": "304LIII",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "316L/20",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "A105NCE",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "A105NZN",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "A105WPB",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "A1063PE",
+    "splitRule": "N/A"
+  },
+  {
+    "materialCode": "AF12GCE",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "API5LZN",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "CF415CE",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "CS/PTFE",
+    "splitRule": "N/A"
+  },
+  {
+    "materialCode": "FRP/PVC",
+    "splitRule": "N/A"
+  },
+  {
+    "materialCode": "L245NCE",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "LF485K2",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "P355NL1",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "P355QL1",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "PTFE/20",
+    "splitRule": "N/A"
+  },
+  {
+    "materialCode": "Q235BZN",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "Q245RCE",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "Q245RZN",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "WPB/304",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "WPBHDPP",
+    "splitRule": "N/A"
+  },
+  {
+    "materialCode": "11/4Cr",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "12Cr13",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "15CrMo",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "16MnCE",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "16MnDG",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "16MnII",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "1Cr5Mo",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "20/304",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "20/EAA",
+    "splitRule": "N/A"
+  },
+  {
+    "materialCode": "20/TA2",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "2205II",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "304/20",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "304/PP",
+    "splitRule": "N/A"
+  },
+  {
+    "materialCode": "304III",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "304LII",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "316LII",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "316LZN",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "321III",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "8825CE",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "A105CE",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "A105ZN",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "A106CE",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "A106ZN",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "A234CE",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "A333CE",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "A350CE",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "A516CE",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "A516ZN",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "CF415K",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "FRPPVC",
+    "splitRule": "N/A"
+  },
+  {
+    "materialCode": "L245CE",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "L245NS",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "N10276",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "P235GH",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "P245GH",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "WPHY65",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "WPL6CE",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "16MnD",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "20/PE",
+    "splitRule": "N/A"
+  },
+  {
+    "materialCode": "20/WC",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "20/衬胶",
+    "splitRule": "N/A"
+  },
+  {
+    "materialCode": "203PE",
+    "splitRule": "N/A"
+  },
+  {
+    "materialCode": "20EAA",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "20III",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "304II",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "304ZN",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "316Ti",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "321ZN",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "32205",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "A105N",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "A53ZN",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "AF12G",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "API5L",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "B60ZN",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "C60CE",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "CF370",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "CF415",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "L245M",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "L245N",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "L245R",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "L290M",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "L290N",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "L360M",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "L415Q",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "LF2CE",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "Q235B",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "Q245R",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "Q345E",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "Q345R",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "WPBCE",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "WPBZN",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "高硅不锈钢",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "16Mn",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "20CE",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "20GA",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "20GL",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "20II",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "20PE",
+    "splitRule": "N/A"
+  },
+  {
+    "materialCode": "20ZN",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "2200",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "2201",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "2205",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "2507",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "304H",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "304I",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "304L",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "310M",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "310S",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "316H",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "316L",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "321H",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "347H",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "4400",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "6600",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "6625",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "8825",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "A105",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "A106",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "A234",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "A283",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "A333",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "A335",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "A387",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "A420",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "A516",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "A533",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "A691",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "A694",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "AF12",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "AF14",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "C276",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "CC60",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "E235",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "FRPP",
+    "splitRule": "N/A"
+  },
+  {
+    "materialCode": "L245",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "M400",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "PVCU",
+    "splitRule": "N/A"
+  },
+  {
+    "materialCode": "S321",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "TA10",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "UPVC",
+    "splitRule": "N/A"
+  },
+  {
+    "materialCode": "WP11",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "WP12",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "WP91",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "WPL6",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "X65Q",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "20G",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "20S",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "304",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "310",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "316",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "321",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "347",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "A53",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "C60",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "CF8",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "F11",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "F12",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "F51",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "F60",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "F65",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "F91",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "FRP",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "LF2",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "P11",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "P12",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "P22",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "P91",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "TA2",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "WPB",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "X65",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "20",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "F5",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "F9",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "GL",
+    "splitRule": "SS"
+  },
+  {
+    "materialCode": "P9",
+    "splitRule": "CS"
+  },
+  {
+    "materialCode": "PE",
+    "splitRule": "N/A"
+  }
+]

@@ -1,0 +1,6 @@
+这里是开发用自动化测试，不是日常操作入口，正常使用工具无需运行。
+在工具根目录运行指定测试模块，例如：
+python -B -m unittest tests.test_wechat_briefing tests.test_export_layout tests.test_analysis_worker tests.test_local_analysis tests.test_briefing tests.test_preflight
+微信相关测试仅使用模拟发送器/控件，不启动微信、不修改真实剪贴板、不发送消息。
+测试数据写入临时目录并自动清理。部分历史测试会调用模拟的登录/下载流程；当前禁止运行登录和下载代码时，不执行这些测试。
+目录迁移后，可使用python -B -m unittest discover -s tests -t .进行完整发现；当前会话未运行涉及登录和下载的历史测试。

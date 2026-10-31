@@ -1,0 +1,2736 @@
+{
+  "schema_version": 1,
+  "source_documents": [
+    {
+      "file": "PP-30201_50150_LT_HE-GG-000-50-00-002__rev_2__24415506__85f5ca9770.pdf",
+      "revision": "2",
+      "description": "DOCUMENT NUMBERING PROCEDURE；§7.6、TE-PR-063附件1、2、5",
+      "sha256": "663fc1c6256d6d0fc8975219286c7c64e7345a52e5c9e28e32243b2788551ce8"
+    },
+    {
+      "file": "PP-30201_50150_LT_HE-GG-000-50-00-004__rev_1__20506072__7f19a10096.pdf",
+      "revision": "1",
+      "description": "文档控制规定；附带TE-PR-063表，作为交叉核对资料",
+      "sha256": "8df1c5e00a9db269971189c1c7a3bd3bb9e9587e087e0d94515d6d9e3423ca36"
+    },
+    {
+      "file": "30201_50150_LT_HE-H4-000-13-61-021__rev_4__30096714__add2fd8ab0.pdf",
+      "revision": "4",
+      "description": "PIPING ISOMETRIC INDEX HABSHAN-4 LOT-5; PDF p.3 CWA naming, pp.4-6 index, pp.7-8 isometrics",
+      "sha256": "db93a96f3576f40ccdf286dffc68dddf70ab9913d06f8eba07d91e6a6f7be831"
+    }
+  ],
+  "notes": [
+    "编号结构：[性质前缀-]30201_50150_LT_HE-厂区-三位单元-两位专业-两位文档类型-三位序号。",
+    "性质前缀优先表示文件业务性质；文档类型码必须与专业码、序号范围组合，不得单独映射。",
+    "13-61在附件2中注明List of isometrics，不能直接视为一张单线图。当前未设置其序号范围，返回专业已识别、业务类型待核对。",
+    "51专业代码的PDF排版同时出现Commissioning、Procurement，暂不纳入确定映射。",
+    "17-50桩基图的原表范围为101 thru 099，范围矛盾，暂不执行该条。",
+    "尚未录入执行规则的细分类型、旧版短编号、设备扩展编号和供应商编号保留待核对，不能以标题关键词推断。",
+    "三位单元规则不适用于保留原编号的既有设施；此类编号不强行补零解释。",
+    "表格中专业表示discipline，业务类型表示文件性质/细分用途，文件扩展名仅表示存储格式。"
+  ],
+  "disciplines": {
+    "10": "压缩机、鼓风机及风机",
+    "11": "非电动驱动设备及汽轮机/燃气轮机",
+    "12": "搬运及包装设备",
+    "13": "管道",
+    "14": "土建基础设施",
+    "15": "仪表、控制及通信",
+    "16": "电气",
+    "17": "土建",
+    "18": "钢结构",
+    "19": "安全、消防及火气设备",
+    "20": "建筑",
+    "21": "运行维护设备",
+    "25": "储罐及料仓",
+    "26": "化学品、润滑剂及催化剂",
+    "31": "机械分离、混合及研磨设备",
+    "32": "物料加工",
+    "33": "通用成套设备",
+    "34": "暖通空调",
+    "50": "项目管理",
+    "53": "供应链",
+    "55": "分包",
+    "56": "质量控制与保证",
+    "60": "声学",
+    "61": "健康安全环保",
+    "62": "环境",
+    "63": "焊接",
+    "65": "保温",
+    "66": "涂装",
+    "67": "运输",
+    "68": "吊装及机械组装",
+    "69": "施工管理",
+    "80": "临时现场设施",
+    "90": "生活设施",
+    "95": "长输管道",
+    "00": "工艺及通用系统",
+    "01": "加热设备",
+    "02": "水处理",
+    "03": "冷却塔",
+    "04": "反应器",
+    "05": "塔器",
+    "06": "换热器",
+    "07": "空冷器",
+    "08": "容器",
+    "09": "泵"
+  },
+  "prefixes": {
+    "RPT": "报告",
+    "BOD": "设计基础",
+    "DOD": "其他文档",
+    "REG": "登记表",
+    "IE": "设计指令",
+    "HMB": "热量与物料平衡",
+    "PLG": "计划",
+    "UFD": "公用工程流程图",
+    "CEC": "因果图",
+    "BFD": "方框流程图",
+    "DWG": "图纸",
+    "PD": "项目说明",
+    "INSP": "检验报告",
+    "SOR": "需求说明",
+    "RP": "工作技术规格书",
+    "SOS": "服务范围",
+    "LD": "文档目录",
+    "NC": "计算书",
+    "NM": "设备、材料或碰口清单",
+    "PFD": "工艺流程图",
+    "PID": "管道及仪表流程图",
+    "PP": "项目程序文件",
+    "SP": "技术规格书",
+    "SPP": "工艺设备数据表",
+    "DC": "结构设计计算书",
+    "BOQ": "工程量清单",
+    "SOW": "工作范围",
+    "R": "请购文件",
+    "SC": "分包合同",
+    "PO": "采购订单",
+    "CBE": "商务评标"
+  },
+  "document_types": [
+    {
+      "discipline": "00",
+      "type": "20",
+      "start": 1,
+      "end": 99,
+      "label": "工艺流程图及平衡表",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第45页"
+    },
+    {
+      "discipline": "00",
+      "type": "30",
+      "start": 1,
+      "end": 499,
+      "label": "工艺管道及仪表流程图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第45页"
+    },
+    {
+      "discipline": "00",
+      "type": "30",
+      "start": 500,
+      "end": 549,
+      "label": "工艺管线表",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第45页"
+    },
+    {
+      "discipline": "00",
+      "type": "40",
+      "start": 1,
+      "end": 499,
+      "label": "公用工程管道及仪表流程图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第45页"
+    },
+    {
+      "discipline": "00",
+      "type": "40",
+      "start": 500,
+      "end": 599,
+      "label": "公用工程及机械管线表",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第45页"
+    },
+    {
+      "discipline": "00",
+      "type": "50",
+      "start": 1,
+      "end": 99,
+      "label": "机械管道及仪表流程图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第45页"
+    },
+    {
+      "discipline": "00",
+      "type": "70",
+      "start": 1,
+      "end": 99,
+      "label": "安全图纸",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第45页"
+    },
+    {
+      "discipline": "00",
+      "type": "70",
+      "start": 100,
+      "end": 999,
+      "label": "电气危险区域划分图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第45页"
+    },
+    {
+      "discipline": "13",
+      "type": "00",
+      "start": 1,
+      "end": 199,
+      "label": "管道标准图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第46页"
+    },
+    {
+      "discipline": "13",
+      "type": "12",
+      "start": 1,
+      "end": 99,
+      "label": "管道通用图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第46页"
+    },
+    {
+      "discipline": "13",
+      "type": "20",
+      "start": 1,
+      "end": 99,
+      "label": "管道布置平面及立面图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第46页"
+    },
+    {
+      "discipline": "13",
+      "type": "30",
+      "start": 1,
+      "end": 99,
+      "label": "管道安装索引图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第46页"
+    },
+    {
+      "discipline": "13",
+      "type": "30",
+      "start": 101,
+      "end": 999,
+      "label": "管道安装图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第46页"
+    },
+    {
+      "discipline": "13",
+      "type": "41",
+      "start": 1,
+      "end": 99,
+      "label": "管道详细图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第46页"
+    },
+    {
+      "discipline": "13",
+      "type": "42",
+      "start": 1,
+      "end": 99,
+      "label": "伴热图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第46页"
+    },
+    {
+      "discipline": "13",
+      "type": "43",
+      "start": 1,
+      "end": 99,
+      "label": "伴热单线图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第46页"
+    },
+    {
+      "discipline": "13",
+      "type": "44",
+      "start": 1,
+      "end": 99,
+      "label": "伴热分配站单线图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第46页"
+    },
+    {
+      "discipline": "13",
+      "type": "60",
+      "start": 1,
+      "end": 99,
+      "label": "总平面及场地平面图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第46页"
+    },
+    {
+      "discipline": "13",
+      "type": "64",
+      "start": 1,
+      "end": 99,
+      "label": "管道支架图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第46页"
+    },
+    {
+      "discipline": "13",
+      "type": "65",
+      "start": 1,
+      "end": 79,
+      "label": "管道支架材料统计表",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第46页"
+    },
+    {
+      "discipline": "13",
+      "type": "65",
+      "start": 81,
+      "end": 99,
+      "label": "管道支架清单",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第46页"
+    },
+    {
+      "discipline": "13",
+      "type": "71",
+      "start": 1,
+      "end": 999,
+      "label": "管道应力分析报告",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第46页"
+    },
+    {
+      "discipline": "14",
+      "type": "10",
+      "start": 1,
+      "end": 99,
+      "label": "土建基础设施标准图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第47页"
+    },
+    {
+      "discipline": "14",
+      "type": "12",
+      "start": 1,
+      "end": 99,
+      "label": "道路及铺装计算书",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第47页"
+    },
+    {
+      "discipline": "14",
+      "type": "21",
+      "start": 1,
+      "end": 99,
+      "label": "场地准备及土方施工图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第47页"
+    },
+    {
+      "discipline": "14",
+      "type": "22",
+      "start": 1,
+      "end": 99,
+      "label": "场地准备及土方计算书",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第47页"
+    },
+    {
+      "discipline": "14",
+      "type": "23",
+      "start": 1,
+      "end": 99,
+      "label": "场地准备及土方总布置图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第47页"
+    },
+    {
+      "discipline": "14",
+      "type": "31",
+      "start": 1,
+      "end": 9,
+      "label": "区域界限图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第47页"
+    },
+    {
+      "discipline": "14",
+      "type": "31",
+      "start": 11,
+      "end": 99,
+      "label": "土建安装图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第47页"
+    },
+    {
+      "discipline": "14",
+      "type": "32",
+      "start": 1,
+      "end": 99,
+      "label": "管网设计及水力计算",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第47页"
+    },
+    {
+      "discipline": "14",
+      "type": "33",
+      "start": 1,
+      "end": 9,
+      "label": "土建通用图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第47页"
+    },
+    {
+      "discipline": "14",
+      "type": "33",
+      "start": 11,
+      "end": 99,
+      "label": "土建导向图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第47页"
+    },
+    {
+      "discipline": "14",
+      "type": "41",
+      "start": 1,
+      "end": 99,
+      "label": "土建详细施工图包",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第47页"
+    },
+    {
+      "discipline": "14",
+      "type": "43",
+      "start": 1,
+      "end": 99,
+      "label": "土建详细导向图包",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第47页"
+    },
+    {
+      "discipline": "14",
+      "type": "50",
+      "start": 1,
+      "end": 99,
+      "label": "土建现场安装图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第47页"
+    },
+    {
+      "discipline": "17",
+      "type": "40",
+      "start": 1,
+      "end": 99,
+      "label": "防火保护图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第51页"
+    },
+    {
+      "discipline": "17",
+      "type": "50",
+      "start": 1,
+      "end": 99,
+      "label": "桩基设计",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第51页"
+    },
+    {
+      "discipline": "17",
+      "type": "91",
+      "start": 1,
+      "end": 99,
+      "label": "土建工程量统计表",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第51页"
+    },
+    {
+      "discipline": "18",
+      "type": "91",
+      "start": 1,
+      "end": 9,
+      "label": "钢结构材料统计表",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第51页"
+    },
+    {
+      "discipline": "17",
+      "type": "11",
+      "start": 1,
+      "end": 99,
+      "label": "混凝土结构标准图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第50页"
+    },
+    {
+      "discipline": "17",
+      "type": "11",
+      "start": 101,
+      "end": 999,
+      "label": "混凝土结构施工文件",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第50页"
+    },
+    {
+      "discipline": "17",
+      "type": "12",
+      "start": 101,
+      "end": 999,
+      "label": "混凝土结构荷载、设计数据及计算书",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第50页"
+    },
+    {
+      "discipline": "17",
+      "type": "13",
+      "start": 101,
+      "end": 999,
+      "label": "混凝土结构总布置图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第50页"
+    },
+    {
+      "discipline": "17",
+      "type": "21",
+      "start": 1,
+      "end": 99,
+      "label": "基础标准图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第50页"
+    },
+    {
+      "discipline": "17",
+      "type": "21",
+      "start": 101,
+      "end": 999,
+      "label": "基础施工文件",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第50页"
+    },
+    {
+      "discipline": "17",
+      "type": "22",
+      "start": 101,
+      "end": 999,
+      "label": "基础荷载、设计数据及计算书",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第50页"
+    },
+    {
+      "discipline": "17",
+      "type": "23",
+      "start": 101,
+      "end": 999,
+      "label": "基础总布置图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第50页"
+    },
+    {
+      "discipline": "17",
+      "type": "31",
+      "start": 1,
+      "end": 99,
+      "label": "土建专项及零星工程标准图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第50页"
+    },
+    {
+      "discipline": "17",
+      "type": "31",
+      "start": 101,
+      "end": 999,
+      "label": "土建专项及零星工程施工文件",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第50页"
+    },
+    {
+      "discipline": "17",
+      "type": "32",
+      "start": 101,
+      "end": 999,
+      "label": "土建专项及零星工程荷载、设计数据及计算书",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第50页"
+    },
+    {
+      "discipline": "17",
+      "type": "33",
+      "start": 101,
+      "end": 999,
+      "label": "土建专项及零星工程总布置图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第50页"
+    },
+    {
+      "discipline": "18",
+      "type": "11",
+      "start": 1,
+      "end": 99,
+      "label": "主体钢结构标准图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第51页"
+    },
+    {
+      "discipline": "18",
+      "type": "11",
+      "start": 101,
+      "end": 999,
+      "label": "主体钢结构工程图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第51页"
+    },
+    {
+      "discipline": "18",
+      "type": "12",
+      "start": 101,
+      "end": 999,
+      "label": "主体钢结构计算书",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第51页"
+    },
+    {
+      "discipline": "18",
+      "type": "13",
+      "start": 101,
+      "end": 999,
+      "label": "主体钢结构总布置图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第51页"
+    },
+    {
+      "discipline": "18",
+      "type": "21",
+      "start": 1,
+      "end": 99,
+      "label": "辅助钢结构标准图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第51页"
+    },
+    {
+      "discipline": "18",
+      "type": "21",
+      "start": 101,
+      "end": 999,
+      "label": "辅助钢结构工程图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第51页"
+    },
+    {
+      "discipline": "18",
+      "type": "22",
+      "start": 101,
+      "end": 999,
+      "label": "辅助钢结构计算书",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第51页"
+    },
+    {
+      "discipline": "18",
+      "type": "23",
+      "start": 101,
+      "end": 999,
+      "label": "辅助钢结构总布置图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第51页"
+    },
+    {
+      "discipline": "18",
+      "type": "31",
+      "start": 1,
+      "end": 99,
+      "label": "设备平台标准图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第51页"
+    },
+    {
+      "discipline": "18",
+      "type": "31",
+      "start": 101,
+      "end": 999,
+      "label": "设备平台工程图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第51页"
+    },
+    {
+      "discipline": "18",
+      "type": "32",
+      "start": 101,
+      "end": 999,
+      "label": "设备平台计算书",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第51页"
+    },
+    {
+      "discipline": "18",
+      "type": "33",
+      "start": 101,
+      "end": 999,
+      "label": "设备平台总布置图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第51页"
+    },
+    {
+      "discipline": "18",
+      "type": "41",
+      "start": 1,
+      "end": 99,
+      "label": "零星钢结构标准图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第51页"
+    },
+    {
+      "discipline": "18",
+      "type": "41",
+      "start": 101,
+      "end": 999,
+      "label": "零星钢结构工程图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第51页"
+    },
+    {
+      "discipline": "18",
+      "type": "42",
+      "start": 101,
+      "end": 999,
+      "label": "零星钢结构计算书",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第51页"
+    },
+    {
+      "discipline": "18",
+      "type": "43",
+      "start": 101,
+      "end": 999,
+      "label": "零星钢结构总布置图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第51页"
+    },
+    {
+      "discipline": "15",
+      "type": "11",
+      "start": 1,
+      "end": 99,
+      "label": "仪表项目设计理念",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "12",
+      "start": 1,
+      "end": 99,
+      "label": "液位仪表设计",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "22",
+      "start": 1,
+      "end": 99,
+      "label": "报警及安全装置清单",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "23",
+      "start": 1,
+      "end": 99,
+      "label": "控制系统设备清单",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "24",
+      "start": 1,
+      "end": 99,
+      "label": "通信设备清单",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "25",
+      "start": 1,
+      "end": 99,
+      "label": "仪表汇总表",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "30",
+      "start": 1,
+      "end": 99,
+      "label": "火气及通信布置图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "31",
+      "start": 1,
+      "end": 99,
+      "label": "仪表线路敷设图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "32",
+      "start": 1,
+      "end": 99,
+      "label": "仪表电缆清单",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "33",
+      "start": 1,
+      "end": 99,
+      "label": "仪表分支总管图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "34",
+      "start": 1,
+      "end": 99,
+      "label": "分析实验室图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "35",
+      "start": 1,
+      "end": 99,
+      "label": "仪表特殊详图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "36",
+      "start": 1,
+      "end": 99,
+      "label": "现场仪表柜图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "37",
+      "start": 1,
+      "end": 99,
+      "label": "分析仪及分析小屋图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "38",
+      "start": 1,
+      "end": 99,
+      "label": "仪表安装详图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "39",
+      "start": 1,
+      "end": 99,
+      "label": "仪表车间图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "41",
+      "start": 1,
+      "end": 99,
+      "label": "控制室布置图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "44",
+      "start": 1,
+      "end": 99,
+      "label": "控制室电缆清单",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "45",
+      "start": 1,
+      "end": 99,
+      "label": "互连方框图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "65",
+      "start": 1,
+      "end": 99,
+      "label": "仪表逻辑图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "71",
+      "start": 1,
+      "end": 99,
+      "label": "模块编程文件",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "72",
+      "start": 1,
+      "end": 99,
+      "label": "数据库生成文件",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "73",
+      "start": 1,
+      "end": 99,
+      "label": "测试程序",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "80",
+      "start": 1,
+      "end": 99,
+      "label": "仪表系统图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "42",
+      "start": 1,
+      "end": 49,
+      "label": "控制盘图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "42",
+      "start": 50,
+      "end": 59,
+      "label": "模拟显示盘图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "42",
+      "start": 60,
+      "end": 99,
+      "label": "控制台图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "43",
+      "start": 1,
+      "end": 49,
+      "label": "仪表柜图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "43",
+      "start": 50,
+      "end": 99,
+      "label": "端子排图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "90",
+      "start": 1,
+      "end": 49,
+      "label": "仪表配套管道散材清单",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "15",
+      "type": "90",
+      "start": 51,
+      "end": 99,
+      "label": "仪表散件清单",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第48页"
+    },
+    {
+      "discipline": "16",
+      "type": "11",
+      "start": 1,
+      "end": 99,
+      "label": "电气项目设计理念",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "22",
+      "start": 1,
+      "end": 99,
+      "label": "接地标准图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "21",
+      "start": 1,
+      "end": 10,
+      "label": "接地总布置图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "21",
+      "start": 11,
+      "end": 99,
+      "label": "接地安装详图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "29",
+      "start": 1,
+      "end": 99,
+      "label": "接地材料统计表",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "32",
+      "start": 1,
+      "end": 99,
+      "label": "动力标准图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "31",
+      "start": 1,
+      "end": 10,
+      "label": "动力总布置图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "31",
+      "start": 11,
+      "end": 98,
+      "label": "动力安装图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "31",
+      "start": 99,
+      "end": 99,
+      "label": "动力电缆表",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "33",
+      "start": 1,
+      "end": 9,
+      "label": "主单线图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "33",
+      "start": 11,
+      "end": 99,
+      "label": "计量及保护单线图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "34",
+      "start": 1,
+      "end": 99,
+      "label": "电气负荷表",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "36",
+      "start": 1,
+      "end": 9,
+      "label": "电气接线图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "36",
+      "start": 11,
+      "end": 29,
+      "label": "电气逻辑图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "36",
+      "start": 31,
+      "end": 59,
+      "label": "电气典型图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "36",
+      "start": 99,
+      "end": 99,
+      "label": "电气互连图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "39",
+      "start": 1,
+      "end": 99,
+      "label": "动力材料统计表",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "42",
+      "start": 1,
+      "end": 99,
+      "label": "照明标准图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "41",
+      "start": 1,
+      "end": 10,
+      "label": "照明总布置图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "41",
+      "start": 11,
+      "end": 99,
+      "label": "照明安装图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "43",
+      "start": 1,
+      "end": 99,
+      "label": "照明回路册",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "49",
+      "start": 1,
+      "end": 99,
+      "label": "照明材料统计表",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "52",
+      "start": 1,
+      "end": 99,
+      "label": "低压通信标准图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "51",
+      "start": 1,
+      "end": 10,
+      "label": "低压通信总布置图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "51",
+      "start": 11,
+      "end": 98,
+      "label": "低压通信安装图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "53",
+      "start": 1,
+      "end": 99,
+      "label": "低压通信接线图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "51",
+      "start": 99,
+      "end": 99,
+      "label": "低压通信电缆清单",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "59",
+      "start": 1,
+      "end": 99,
+      "label": "低压通信材料统计表",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "60",
+      "start": 1,
+      "end": 99,
+      "label": "电缆敷设布置图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "60",
+      "start": 100,
+      "end": 199,
+      "label": "电缆桥架布置图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "60",
+      "start": 200,
+      "end": 299,
+      "label": "变电站设备布置图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第49页"
+    },
+    {
+      "discipline": "16",
+      "type": "61",
+      "start": 1,
+      "end": 10,
+      "label": "建筑接地动力通信索引图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第50页"
+    },
+    {
+      "discipline": "16",
+      "type": "61",
+      "start": 11,
+      "end": 99,
+      "label": "建筑接地动力通信安装图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第50页"
+    },
+    {
+      "discipline": "16",
+      "type": "62",
+      "start": 1,
+      "end": 10,
+      "label": "建筑照明索引图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第50页"
+    },
+    {
+      "discipline": "16",
+      "type": "62",
+      "start": 11,
+      "end": 99,
+      "label": "建筑照明安装图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第50页"
+    },
+    {
+      "discipline": "20",
+      "type": "10",
+      "start": 1,
+      "end": 999,
+      "label": "通用建筑概念设计",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第52页"
+    },
+    {
+      "discipline": "20",
+      "type": "11",
+      "start": 1,
+      "end": 999,
+      "label": "控制室概念设计",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第52页"
+    },
+    {
+      "discipline": "20",
+      "type": "12",
+      "start": 1,
+      "end": 999,
+      "label": "电气室概念设计",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第52页"
+    },
+    {
+      "discipline": "20",
+      "type": "13",
+      "start": 1,
+      "end": 999,
+      "label": "分析室概念设计",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第52页"
+    },
+    {
+      "discipline": "20",
+      "type": "14",
+      "start": 1,
+      "end": 999,
+      "label": "泵房及机房概念设计",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第52页"
+    },
+    {
+      "discipline": "20",
+      "type": "15",
+      "start": 1,
+      "end": 999,
+      "label": "车间仓库及门卫概念设计",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第52页"
+    },
+    {
+      "discipline": "20",
+      "type": "16",
+      "start": 1,
+      "end": 999,
+      "label": "实验室食堂及厨房概念设计",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第52页"
+    },
+    {
+      "discipline": "20",
+      "type": "17",
+      "start": 1,
+      "end": 999,
+      "label": "行政及公共建筑概念设计",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第52页"
+    },
+    {
+      "discipline": "20",
+      "type": "18",
+      "start": 1,
+      "end": 999,
+      "label": "生活设施概念设计",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第52页"
+    },
+    {
+      "discipline": "20",
+      "type": "19",
+      "start": 1,
+      "end": 999,
+      "label": "其他建筑概念设计",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第52页"
+    },
+    {
+      "discipline": "20",
+      "type": "20",
+      "start": 1,
+      "end": 999,
+      "label": "建筑详细设计说明及计算",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第52页"
+    },
+    {
+      "discipline": "20",
+      "type": "21",
+      "start": 1,
+      "end": 999,
+      "label": "控制室详细设计图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第52页"
+    },
+    {
+      "discipline": "20",
+      "type": "22",
+      "start": 1,
+      "end": 999,
+      "label": "电气室详细设计图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第52页"
+    },
+    {
+      "discipline": "20",
+      "type": "23",
+      "start": 1,
+      "end": 999,
+      "label": "分析室详细设计图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第52页"
+    },
+    {
+      "discipline": "20",
+      "type": "24",
+      "start": 1,
+      "end": 999,
+      "label": "泵房及机房详细设计图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第52页"
+    },
+    {
+      "discipline": "20",
+      "type": "25",
+      "start": 1,
+      "end": 999,
+      "label": "车间仓库及门卫详细设计图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第52页"
+    },
+    {
+      "discipline": "20",
+      "type": "26",
+      "start": 1,
+      "end": 999,
+      "label": "实验室食堂及厨房详细设计图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第52页"
+    },
+    {
+      "discipline": "20",
+      "type": "27",
+      "start": 1,
+      "end": 999,
+      "label": "行政及公共建筑详细设计图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第52页"
+    },
+    {
+      "discipline": "20",
+      "type": "28",
+      "start": 1,
+      "end": 999,
+      "label": "生活设施详细设计图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第52页"
+    },
+    {
+      "discipline": "20",
+      "type": "29",
+      "start": 1,
+      "end": 999,
+      "label": "其他建筑详细设计图",
+      "basis": "TE-PR-063 附件2；编号规定002 Rev.2 PDF第52页"
+    }
+  ],
+  "construction_iso_naming": {
+    "alphabetic_cwa_basis": "单线图索引30201_50150_LT_HE-H4-000-13-61-021 Rev.4，PDF第3页CWA命名规则、第4–6页索引、第7–8页实际单线图",
+    "alphabetic_cwa": {
+      "first": "ABCLPRSUWF",
+      "second": "ABCDENU",
+      "third": "ABCDEFGHJKLMNPRSTUVWXYZ"
+    },
+    "fluid_code_lengths": [
+      2,
+      3
+    ],
+    "sheet_number": "字母CWA格式的图页号可单列；若拼在图号后则为两位数字。数字CWA格式保留原规定的两位图页号。",
+    "short_unit": "仅接受units表中同厂区明确列出的两位original_unit，保留原值；不将任意两位数补零解释。H1-43见002 Rev.2 Appendix 2，PDF第150页。",
+    "scope": "只补充文件名识别；索引及混合PDF的逐页内容识别尚未接入。"
+  },
+  "construction_isometrics": {
+    "45": "地下非承压土建管线单线图",
+    "52": "地上新建管道单线图",
+    "53": "地上/地下碰口管道单线图",
+    "54": "地上/地下拆除管道单线图",
+    "58": "地下承压管道单线图"
+  },
+  "plants": {
+    "H0": "Habshan 0",
+    "H1": "Habshan 1",
+    "H2": "Habshan 2",
+    "H3": "Habshan 3",
+    "H4": "Habshan 4",
+    "H5": "Habshan 5",
+    "HB": "BAB",
+    "GG": "COMMON FOR ANY PLANT (AGP-GENERAL)",
+    "PL": "PIPELINE",
+    "BH": "BUHASA",
+    "B5": "Bu-5",
+    "A0": "ASAB-0",
+    "A1": "ASAB-1",
+    "A2": "ASAB-2",
+    "A3": "ASAB-3",
+    "R1": "RUWAIS TRAIN-1",
+    "R2": "RUWAIS TRAIN-2",
+    "R3": "RUWAIS TRAIN-3",
+    "R4": "RUWAIS TRAIN-4",
+    "TW": "TAWEELAH",
+    "HX": "HABSHAN SGP",
+    "S1": "Ruwais Sulphur Handling Terminal-1",
+    "S2": "Ruwais Sulphur Handling Terminal-2"
+  },
+  "units": [
+    {
+      "plant": "H0",
+      "unit": "030",
+      "original_unit": "30",
+      "english": "Thammama 'C' Gas Treating Train 1",
+      "chinese": "Thammama C 气体处理第1系列",
+      "area": "Process",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H0",
+      "unit": "031",
+      "original_unit": "31",
+      "english": "Thammama 'C' Gas Treating Train 2",
+      "chinese": "Thammama C 气体处理第2系列",
+      "area": "Process",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H0",
+      "unit": "040",
+      "original_unit": "40",
+      "english": "Thammama 'C' NGL Recovery Train 1",
+      "chinese": "Thammama C 天然气凝液回收第1系列",
+      "area": "Process",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H0",
+      "unit": "041",
+      "original_unit": "41",
+      "english": "Thammama 'C' NGL Recovery Train 2",
+      "chinese": "Thammama C 天然气凝液回收第2系列",
+      "area": "Process",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H0",
+      "unit": "045",
+      "original_unit": "45",
+      "english": "METHANOL STORAGE, DEBUTANIZER AND NGL STORAGE & SHIPPING",
+      "chinese": "甲醇储存、脱丁烷及天然气凝液储运",
+      "area": "Process",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H0",
+      "unit": "051",
+      "original_unit": "51",
+      "english": "Sulphur Recovery Thammama 'C' Train 2",
+      "chinese": "Thammama C 硫磺回收第2系列",
+      "area": "Process",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H0",
+      "unit": "061",
+      "original_unit": "61",
+      "english": "Potable And Utility Water Systems",
+      "chinese": "饮用水及公用工程水系统",
+      "area": "Utility",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H0",
+      "unit": "070",
+      "original_unit": "70",
+      "english": "Interconnecting Pipeway Process",
+      "chinese": "工艺管廊互联",
+      "area": "Utility",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H0",
+      "unit": "071",
+      "original_unit": "71",
+      "english": "BLOWDOWN SYSTEM - FLARE UNIT",
+      "chinese": "泄压及火炬系统",
+      "area": "Utility",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H0",
+      "unit": "072",
+      "original_unit": "72",
+      "english": "Waste Water and Effluent Treatment",
+      "chinese": "废水及污水处理",
+      "area": "Utility",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H0",
+      "unit": "081",
+      "original_unit": "81",
+      "english": "Bab Lean Gas Station (BLGS)",
+      "chinese": "Bab 贫气站（BLGS）",
+      "area": "Compression",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H0",
+      "unit": "278",
+      "original_unit": "278",
+      "english": "Process Buildings and Non-Process Buildings",
+      "chinese": "生产及非生产建筑",
+      "area": "Utility",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H0",
+      "unit": "280",
+      "original_unit": "280",
+      "english": "Power Generation System / Substation",
+      "chinese": "发电系统／变电站",
+      "area": "Utility",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "012",
+      "original_unit": "12",
+      "english": "Bab Low Pressure Gas Compression",
+      "chinese": "Bab 低压气压缩",
+      "area": "Compression",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "013",
+      "original_unit": "13",
+      "english": "Thammama B/C Feed Gas Compression",
+      "chinese": "Thammama B/C 原料气压缩",
+      "area": "Compression",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "032",
+      "original_unit": "32",
+      "english": "Thammama B/C Gas Treating Train 3",
+      "chinese": "Thammama B/C 气体处理第3系列",
+      "area": "Process",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "033",
+      "original_unit": "33",
+      "english": "Thammama B/C Gas Treating Train 4",
+      "chinese": "Thammama B/C 气体处理第4系列",
+      "area": "Process",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "042",
+      "original_unit": "42",
+      "english": "Thammama B/C NGL Recovery Train 3",
+      "chinese": "Thammama B/C 天然气凝液回收第3系列",
+      "area": "Process",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "043",
+      "original_unit": "43",
+      "english": "Thammama B/C NGL Recovery Train 4",
+      "chinese": "Thammama B/C 天然气凝液回收第4系列",
+      "area": "Process",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "045",
+      "original_unit": "45",
+      "english": "NGL STORAGE & EXPORT(OGD-I)",
+      "chinese": "天然气凝液储存及外输（OGD-I）",
+      "area": "Process",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "078",
+      "original_unit": "78",
+      "english": "Process Buildings OGD-I",
+      "chinese": "OGD-I 生产建筑",
+      "area": "Utility",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "092",
+      "original_unit": "92",
+      "english": "OGD-I Process and Utilities Interconnections",
+      "chinese": "OGD-I 工艺及公用工程互联",
+      "area": "Process",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "098",
+      "original_unit": "98",
+      "english": "NGI COMPRESSION (NGI PURE CASE PROJECT)",
+      "chinese": "NGI 压缩（NGI PURE CASE项目）",
+      "area": "Compression",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "112",
+      "original_unit": "112",
+      "english": "LP Gas Compression - Bab (HGCE Project)",
+      "chinese": "Bab 低压气压缩（HGCE项目）",
+      "area": "Compression",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "212",
+      "original_unit": "212",
+      "english": "Feed Gas Compression Thammama 'B' AND 'C' (ETB Compressors)",
+      "chinese": "Thammama B/C 原料气压缩（ETB压缩机）",
+      "area": "Compression",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "271",
+      "original_unit": "271",
+      "english": "Flare Systems P5.0 Project",
+      "chinese": "P5.0 项目火炬系统",
+      "area": "Compression",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "273",
+      "original_unit": "273",
+      "english": "Firewater Systems and Fire & Gas Protection P5.0 Project",
+      "chinese": "P5.0 项目消防水及火气保护系统",
+      "area": "Compression",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "278",
+      "original_unit": "278",
+      "english": "Process Buildings and Non-Process Buildings",
+      "chinese": "生产及非生产建筑",
+      "area": "Compression",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "299",
+      "original_unit": "299",
+      "english": "Process And Utilities Interconnections",
+      "chinese": "工艺及公用工程互联",
+      "area": "Compression",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "512",
+      "original_unit": "512",
+      "english": "BAB LOW PRESSURE COMPRESSION (IGD, 5247 PROJECT)",
+      "chinese": "Bab 低压气压缩（IGD，5247项目）",
+      "area": "Compression",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "012",
+      "original_unit": "12",
+      "english": "LAUNCHER AREA OF 36 INCH MP PIPELINE FROM BAB CDS U12 TO U13 (P5.0 PROJECT)",
+      "chinese": "Bab CDS U12至U13的36英寸中压管道发球区（P5.0项目）",
+      "area": "Pipeline",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "013",
+      "original_unit": "13",
+      "english": "RECEIVER AREA OF 36 INCH MP PIPELINE FROM BAB CDS U12 TO U13 (P5.0 PROJECT)",
+      "chinese": "Bab CDS U12至U13的36英寸中压管道收球区（P5.0项目）",
+      "area": "Pipeline",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "081",
+      "original_unit": "81",
+      "english": "RECEIVER AREA MAQTA-HABSHAN WATER PIEPLINE",
+      "chinese": "Maqta—Habshan 输水管道收球区",
+      "area": "Pipeline",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "112",
+      "original_unit": "112",
+      "english": "LAUNCHER AREA OF 36 INCH MP PIPELINE FROM BAB CDS U112 TO U113 (P5.0 PROJECT)",
+      "chinese": "Bab CDS U112至U113的36英寸中压管道发球区（P5.0项目）",
+      "area": "Pipeline",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "212",
+      "original_unit": "212",
+      "english": "LAUNCHER AREA OF 42 INCH TH B HP PIPELINE FROM BAB CDS U212",
+      "chinese": "Bab CDS U212引出的42英寸Thammama B高压管道发球区",
+      "area": "Pipeline",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "634",
+      "original_unit": "634",
+      "english": "42 INCH TH B HP PIPELINE FROM BAB CDS UNIT 212 TO HABSHAN COMPLEX UNIT-213",
+      "chinese": "Bab CDS 212单元至Habshan综合区213单元的42英寸Thammama B高压管道",
+      "area": "Pipeline",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "644",
+      "original_unit": "644",
+      "english": "36 INCH MP PIPELINE FROM BAB CDS UNIT 12 TO HABSHAN COMPLEX UNIT-13",
+      "chinese": "Bab CDS 12单元至Habshan综合区13单元的36英寸中压管道",
+      "area": "Pipeline",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "645",
+      "original_unit": "645",
+      "english": "36 INCH MP PIPELINE FROM BAB CDS UNIT 112 TO HABSHAN COMPLEX UNIT-113",
+      "chinese": "Bab CDS 112单元至Habshan综合区113单元的36英寸中压管道",
+      "area": "Pipeline",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H1",
+      "unit": "280",
+      "original_unit": "280",
+      "english": "POWER GENERATION SYSTEM / Substation",
+      "chinese": "发电系统／变电站",
+      "area": "",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H2",
+      "unit": "001",
+      "original_unit": "1",
+      "english": "HABSHAN-2 Common Facilities",
+      "chinese": "Habshan-2 公共设施",
+      "area": "Common",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H2",
+      "unit": "027",
+      "original_unit": "27",
+      "english": "Thammama C/D/6/7 Feed Gas Separation & Condensate Stabilisation",
+      "chinese": "Thammama C/D/6/7 原料气分离及凝析油稳定",
+      "area": "Process",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H2",
+      "unit": "037",
+      "original_unit": "37",
+      "english": "Thammama C/D/6/7 Gas Treating Train 6",
+      "chinese": "Thammama C/D/6/7 气体处理第6系列",
+      "area": "Process",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H2",
+      "unit": "038",
+      "original_unit": "38",
+      "english": "Thammama C/D/6/7 Gas Treating Train 7",
+      "chinese": "Thammama C/D/6/7 气体处理第7系列",
+      "area": "Process",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H2",
+      "unit": "039",
+      "original_unit": "39",
+      "english": "Thammama C/D/6/7 Gas Treating Train 8",
+      "chinese": "Thammama C/D/6/7 气体处理第8系列",
+      "area": "Process",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H2",
+      "unit": "045",
+      "original_unit": "45",
+      "english": "Methanol Storage, Debutanizer (Common to Unit 47 and 48)",
+      "chinese": "甲醇储存及脱丁烷（47、48单元共用）",
+      "area": "Process",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H2",
+      "unit": "047",
+      "original_unit": "47",
+      "english": "Thammama C/D/6/7 NGL Recovery Train 6",
+      "chinese": "Thammama C/D/6/7 天然气凝液回收第6系列",
+      "area": "Process",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H2",
+      "unit": "048",
+      "original_unit": "48",
+      "english": "Thammama C/D/6/7 NGL Recovery Train 7",
+      "chinese": "Thammama C/D/6/7 天然气凝液回收第7系列",
+      "area": "Process",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H2",
+      "unit": "059",
+      "original_unit": "59",
+      "english": "THAMMAMA C/D/6/7 SULPHUR RECOVERY TRAIN 8",
+      "chinese": "Thammama C/D/6/7 硫磺回收第8系列",
+      "area": "Process",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H2",
+      "unit": "062",
+      "original_unit": "62",
+      "english": "Steam And Condensate Systems OGD-II",
+      "chinese": "OGD-II 蒸汽及凝结水系统",
+      "area": "Utility",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H2",
+      "unit": "066",
+      "original_unit": "66",
+      "english": "Cooling Water/Refrigeration Systems OGD-II",
+      "chinese": "OGD-II 冷却水／制冷系统",
+      "area": "Utility",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H2",
+      "unit": "067",
+      "original_unit": "67",
+      "english": "Plant Air Systems OGD-II",
+      "chinese": "OGD-II 工厂空气系统",
+      "area": "Utility",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H2",
+      "unit": "069",
+      "original_unit": "69",
+      "english": "Take the description from PBS",
+      "chinese": "名称按PBS确定（待核对）",
+      "area": "",
+      "source_page": 150,
+      "status": "pending_definition",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H2",
+      "unit": "073",
+      "original_unit": "73",
+      "english": "Firewater Systems & Fire & Gas Protection OGD-II",
+      "chinese": "OGD-II 消防水及火气保护系统",
+      "area": "Utility",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H2",
+      "unit": "077",
+      "original_unit": "77",
+      "english": "OGD-II Process & Utilities Interconnections",
+      "chinese": "OGD-II 工艺及公用工程互联",
+      "area": "Process",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H2",
+      "unit": "078",
+      "original_unit": "78",
+      "english": "PROCESS BUILDINGS OGD-II",
+      "chinese": "OGD-II 生产建筑",
+      "area": "Utility",
+      "source_page": 150,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第150页"
+    },
+    {
+      "plant": "H2",
+      "unit": "080",
+      "original_unit": "80",
+      "english": "POWER GENERATION OGD-II",
+      "chinese": "OGD-II 发电",
+      "area": "Utility",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H2",
+      "unit": "233",
+      "original_unit": "233",
+      "english": "Acid Gas Enrichment Unit",
+      "chinese": "酸性气富集装置",
+      "area": "Process",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H2",
+      "unit": "235",
+      "original_unit": "235",
+      "english": "Fresh Solvent Swap",
+      "chinese": "新鲜溶剂置换",
+      "area": "Process",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H2",
+      "unit": "272",
+      "original_unit": "272",
+      "english": "SOUR WATER STRIPPER",
+      "chinese": "酸性水汽提",
+      "area": "Process",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H2",
+      "unit": "280",
+      "original_unit": "280",
+      "english": "POWER GENERATION SYSTEM / Substation",
+      "chinese": "发电系统／变电站",
+      "area": "Utility",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H2",
+      "unit": "273",
+      "original_unit": "273",
+      "english": "Fire & Gas and Firewater System",
+      "chinese": "火气及消防水系统",
+      "area": "Utility",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H2",
+      "unit": "277",
+      "original_unit": "277",
+      "english": "Process And Utilities Interconnections",
+      "chinese": "工艺及公用工程互联",
+      "area": "Process",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H2",
+      "unit": "278",
+      "original_unit": "278",
+      "english": "Process Buildings and Non-Process Buildings",
+      "chinese": "生产及非生产建筑",
+      "area": "Utility",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H2",
+      "unit": "027",
+      "original_unit": "27",
+      "english": "RECEIVER AREA OF 48\" P5 PIPELINE FROM HABSHAN-5",
+      "chinese": "Habshan-5引出的48英寸P5管道收球区",
+      "area": "Pipeline",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H3",
+      "unit": "300",
+      "original_unit": "300",
+      "english": "COMMON UNIT OGD-III",
+      "chinese": "OGD-III 公用单元",
+      "area": "Area 4",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H3",
+      "unit": "378",
+      "original_unit": "378",
+      "english": "OGD-III PROCESS BUILDINGS",
+      "chinese": "OGD-III 生产建筑",
+      "area": "Area 4",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H3",
+      "unit": "380",
+      "original_unit": "380",
+      "english": "POWER GENERATION",
+      "chinese": "发电",
+      "area": "Area 4",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H4",
+      "unit": "000",
+      "original_unit": "0",
+      "english": "General and Common Facilities",
+      "chinese": "通用及公共设施",
+      "area": "Common",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H4",
+      "unit": "113",
+      "original_unit": "113",
+      "english": "M P GAS COMPRESSION (113 NORTH)",
+      "chinese": "中压气压缩（113北区）",
+      "area": "Compression",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H4",
+      "unit": "113",
+      "original_unit": "113",
+      "english": "Feed Gas Compression Unit (113 South)",
+      "chinese": "原料气压缩单元（113南区）",
+      "area": "Area 3",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H4",
+      "unit": "122",
+      "original_unit": "122",
+      "english": "SEPARATION AND CONDENSATE STABILISATION",
+      "chinese": "分离及凝析油稳定",
+      "area": "Area 1",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H4",
+      "unit": "162",
+      "original_unit": "162",
+      "english": "STEAM, CONDENSATE AND BFW SYSTEM",
+      "chinese": "蒸汽、凝结水及锅炉给水系统",
+      "area": "Utility",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H4",
+      "unit": "177",
+      "original_unit": "177",
+      "english": "Process Interconnections",
+      "chinese": "工艺互联",
+      "area": "Area 3",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H4",
+      "unit": "200",
+      "original_unit": "200",
+      "english": "OAG Feed Separation & Stabilisation Unit",
+      "chinese": "OAG 原料分离及稳定装置",
+      "area": "Area 3",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H4",
+      "unit": "210",
+      "original_unit": "210",
+      "english": "OAG Debutaniser Unit",
+      "chinese": "OAG 脱丁烷装置",
+      "area": "Area 3",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H4",
+      "unit": "213",
+      "original_unit": "213",
+      "english": "Thammama 'B' Feed Gas Compression",
+      "chinese": "Thammama B 原料气压缩",
+      "area": "Area 3",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H4",
+      "unit": "245",
+      "original_unit": "245",
+      "english": "Description to be decided by P5.0 PMT/ PMTC Process",
+      "chinese": "名称由P5.0 PMT／PMTC工艺专业确定（待核对）",
+      "area": "Utility",
+      "source_page": 151,
+      "status": "pending_definition",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H4",
+      "unit": "261",
+      "original_unit": "261",
+      "english": "Utility And Potable Water System",
+      "chinese": "公用工程水及饮用水系统",
+      "area": "Utility",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H4",
+      "unit": "262",
+      "original_unit": "262",
+      "english": "Steam, Condensate & BFW System",
+      "chinese": "蒸汽、凝结水及锅炉给水系统",
+      "area": "Utility",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H4",
+      "unit": "264",
+      "original_unit": "264",
+      "english": "Chemical Systems",
+      "chinese": "化学品系统",
+      "area": "Utility",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H4",
+      "unit": "265",
+      "original_unit": "265",
+      "english": "Fuel Gas System",
+      "chinese": "燃料气系统",
+      "area": "Utility",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H4",
+      "unit": "266",
+      "original_unit": "266",
+      "english": "Cooling Water System",
+      "chinese": "冷却水系统",
+      "area": "Utility",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H4",
+      "unit": "267",
+      "original_unit": "267",
+      "english": "Plant And Instrument Air",
+      "chinese": "工厂及仪表空气",
+      "area": "Utility",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H4",
+      "unit": "268",
+      "original_unit": "268",
+      "english": "Nitrogen System",
+      "chinese": "氮气系统",
+      "area": "Utility",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H4",
+      "unit": "272",
+      "original_unit": "272",
+      "english": "Effluent Treatment",
+      "chinese": "污水处理",
+      "area": "Utility",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H4",
+      "unit": "273",
+      "original_unit": "273",
+      "english": "Fire & Gas and Firewater System",
+      "chinese": "火气及消防水系统",
+      "area": "Utility",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H4",
+      "unit": "277",
+      "original_unit": "277",
+      "english": "Process And Utility Interconnections",
+      "chinese": "工艺及公用工程互联",
+      "area": "Area 3",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H4",
+      "unit": "278",
+      "original_unit": "278",
+      "english": "Process Buildings and Non-Process Buildings",
+      "chinese": "生产及非生产建筑",
+      "area": "Utility",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H4",
+      "unit": "280",
+      "original_unit": "280",
+      "english": "Power Generation System / Substation",
+      "chinese": "发电系统／变电站",
+      "area": "Utility",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H4",
+      "unit": "113",
+      "original_unit": "113",
+      "english": "SCAPPER RECEIVER AREA HABSHAN GAS PIPELINES",
+      "chinese": "Habshan 输气管道收球区",
+      "area": "Pipeline",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H4",
+      "unit": "213",
+      "original_unit": "213",
+      "english": "RECEIVER AREA OF 42 INCH TH B HP PIPELINE FROM BAB CDS U212",
+      "chinese": "Bab CDS U212引出的42英寸Thammama B高压管道收球区",
+      "area": "Pipeline",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H5",
+      "unit": "510",
+      "original_unit": "510",
+      "english": "IGD-E Common Facilities",
+      "chinese": "IGD-E 公共设施",
+      "area": "Process",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H5",
+      "unit": "513",
+      "original_unit": "513",
+      "english": "MP (PL1) and HP (PL2) Pipeline Scrapper Receiver Area",
+      "chinese": "中压（PL1）及高压（PL2）管道收球区",
+      "area": "Utility",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H5",
+      "unit": "514",
+      "original_unit": "514",
+      "english": "Feed Gas Compressor",
+      "chinese": "原料气压缩机",
+      "area": "Process",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H5",
+      "unit": "520",
+      "original_unit": "520",
+      "english": "Condensate Stabilisation",
+      "chinese": "凝析油稳定",
+      "area": "Process",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H5",
+      "unit": "521",
+      "original_unit": "521",
+      "english": "Separation and Stabilisation",
+      "chinese": "分离及稳定",
+      "area": "Process",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H5",
+      "unit": "522",
+      "original_unit": "522",
+      "english": "Separation and Stabilisation",
+      "chinese": "分离及稳定",
+      "area": "Process",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H5",
+      "unit": "530",
+      "original_unit": "530",
+      "english": "Rich Gas Acid Gas Removal Train 1",
+      "chinese": "富气脱酸第1系列",
+      "area": "Process",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H5",
+      "unit": "530",
+      "original_unit": "530",
+      "english": "OAG to Thammama-B Gas Pipeline(PL4) Scrapper Receiver Area",
+      "chinese": "OAG至Thammama-B输气管道（PL4）收球区",
+      "area": "Utility",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H5",
+      "unit": "531",
+      "original_unit": "531",
+      "english": "Rich Gas Acid Gas Removal Train 2",
+      "chinese": "富气脱酸第2系列",
+      "area": "Process",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H5",
+      "unit": "532",
+      "original_unit": "532",
+      "english": "Lean Gas Acid Gas Removal Train 1",
+      "chinese": "贫气脱酸第1系列",
+      "area": "Process",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H5",
+      "unit": "532",
+      "original_unit": "532",
+      "english": "Thammama-C/D/6/7 Lean Gas Pipeline(PL5) Scrapper Receiver Area",
+      "chinese": "Thammama-C/D/6/7贫气管道（PL5）收球区",
+      "area": "Utility",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H5",
+      "unit": "533",
+      "original_unit": "533",
+      "english": "Lean Gas Acid Gas Removal Train 2",
+      "chinese": "贫气脱酸第2系列",
+      "area": "Process",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H5",
+      "unit": "540",
+      "original_unit": "540",
+      "english": "Rich Gas Dehydration and NGL Recovery Train 1",
+      "chinese": "富气脱水及天然气凝液回收第1系列",
+      "area": "Process",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H5",
+      "unit": "541",
+      "original_unit": "541",
+      "english": "Rich Gas Dehydration and NGL Recovery Train 2",
+      "chinese": "富气脱水及天然气凝液回收第2系列",
+      "area": "Process",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H5",
+      "unit": "550",
+      "original_unit": "550",
+      "english": "Sulphur Recovery Train 1",
+      "chinese": "硫磺回收第1系列",
+      "area": "Process",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H5",
+      "unit": "551",
+      "original_unit": "551",
+      "english": "Sulphur Recovery Train 2",
+      "chinese": "硫磺回收第2系列",
+      "area": "Process",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H5",
+      "unit": "552",
+      "original_unit": "552",
+      "english": "Sulphur Recovery Train 3",
+      "chinese": "硫磺回收第3系列",
+      "area": "Process",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H5",
+      "unit": "553",
+      "original_unit": "553",
+      "english": "Sulphur Recovery Train 4",
+      "chinese": "硫磺回收第4系列",
+      "area": "Process",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H5",
+      "unit": "571",
+      "original_unit": "571",
+      "english": "Flare and Blowdown",
+      "chinese": "火炬及泄压",
+      "area": "Process",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H5",
+      "unit": "577",
+      "original_unit": "577",
+      "english": "Interconnecting Piping",
+      "chinese": "互联管道",
+      "area": "Process",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H5",
+      "unit": "577",
+      "original_unit": "577",
+      "english": "interconnecting Piping",
+      "chinese": "互联管道",
+      "area": "Utility",
+      "source_page": 151,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第151页"
+    },
+    {
+      "plant": "H5",
+      "unit": "599",
+      "original_unit": "599",
+      "english": "P5.0 Project Interconnecting Piperack",
+      "chinese": "P5.0 项目互联管架",
+      "area": "Process",
+      "source_page": 152,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第152页"
+    },
+    {
+      "plant": "H5",
+      "unit": "278",
+      "original_unit": "278",
+      "english": "Process Buildings and Non-Process Buildings",
+      "chinese": "生产及非生产建筑",
+      "area": "Utility",
+      "source_page": 152,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第152页"
+    },
+    {
+      "plant": "H5",
+      "unit": "280",
+      "original_unit": "280",
+      "english": "Power Generation System / Substation",
+      "chinese": "发电系统／变电站",
+      "area": "Utility",
+      "source_page": 152,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第152页"
+    },
+    {
+      "plant": "HB",
+      "unit": "011",
+      "original_unit": "11",
+      "english": "Booster Compression Station",
+      "chinese": "增压站",
+      "area": "Process",
+      "source_page": 152,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第152页"
+    },
+    {
+      "plant": "HB",
+      "unit": "012",
+      "original_unit": "12",
+      "english": "Gas Separation and Compression",
+      "chinese": "气体分离及压缩",
+      "area": "Process",
+      "source_page": 152,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第152页"
+    },
+    {
+      "plant": "HB",
+      "unit": "013",
+      "original_unit": "13",
+      "english": "Gas Sweetening",
+      "chinese": "气体脱硫",
+      "area": "Process",
+      "source_page": 152,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第152页"
+    },
+    {
+      "plant": "HB",
+      "unit": "014",
+      "original_unit": "14",
+      "english": "NGL Recovery",
+      "chinese": "天然气凝液回收",
+      "area": "Process",
+      "source_page": 152,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第152页"
+    },
+    {
+      "plant": "HB",
+      "unit": "015",
+      "original_unit": "15",
+      "english": "Offsites & Utilities",
+      "chinese": "厂外设施及公用工程",
+      "area": "Utility",
+      "source_page": 152,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第152页"
+    },
+    {
+      "plant": "HB",
+      "unit": "278",
+      "original_unit": "278",
+      "english": "Process Buildings and Non-Process Buildings",
+      "chinese": "生产及非生产建筑",
+      "area": "Utility",
+      "source_page": 152,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第152页"
+    },
+    {
+      "plant": "HB",
+      "unit": "280",
+      "original_unit": "280",
+      "english": "Power Generation System / Substation",
+      "chinese": "发电系统／变电站",
+      "area": "Utility",
+      "source_page": 152,
+      "status": "listed",
+      "basis": "编号规定002 Rev.2 Appendix 2 - Unit Numbering，PDF第152页"
+    }
+  ],
+  "unit_notes": [
+    "英文名称摘录自编号规定002 Rev.2 Appendix 2（PDF第150—152页），中文均为译名，不是业主发布的正式中文名称。",
+    "厂区代码依据TE-PR-063附件4（PDF第56页）；BAB对应HB。",
+    "原表一至两位单元号补足三位以供查表，原编号另列保存；简报保留自身识别的单元号写法。",
+    "厂区＋单元号存在多条不同英文名称时显示待核对，不根据标题猜选其中一项；所有候选保留供核对。",
+    "原文要求由PBS或PMT/PMTC确定名称的条目显示待核对，不把指示语当成已确认的装置名称。"
+  ]
+}

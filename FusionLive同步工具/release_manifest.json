@@ -1,0 +1,298 @@
+{
+  "format": 1,
+  "release": "2026.10.30-extraction-cache.1",
+  "generated_at_beijing": "2026-10-30T16:44:22.887826+08:00",
+  "description": "Content-addressed ZIP/7z extraction reuse across parser versions, verified legacy adoption, and post-success cleanup of superseded extractions.",
+  "schedule_beijing": "02:00-10:30",
+  "automatic_download_without_scope_confirmation": false,
+  "resume_inventory_only": false,
+  "files": {
+    "app/analysis_cache.json": {
+      "sha256": "61fe3c1b27061162b8f89bcdb42b53b25c670aa247c27e9bccfa625b25bc2c1c",
+      "bytes": 1387
+    },
+    "app/analysis_settings.py": {
+      "sha256": "1051a05e5919735c352a2ea8f0d73b59d6ff8315e21e11f1520dce7a99430ddd",
+      "bytes": 910
+    },
+    "app/analysis_worker.py": {
+      "sha256": "17549245462d1e4d47d2ef9d0819c4f5541713b2df691c52b9f4d966098a3620",
+      "bytes": 32570
+    },
+    "app/app_paths.py": {
+      "sha256": "f75c67195c03698e00f8a6a0f15deca25cd93c74e2a05c54dfee1333c261c183",
+      "bytes": 224
+    },
+    "app/archive_index.py": {
+      "sha256": "5bb486beeab600315aabcd27aacb9d71e5ce59aa0d5d98d4d82a2015b8e33a02",
+      "bytes": 6323
+    },
+    "app/briefing.py": {
+      "sha256": "6d5bd9d70e2d94bf46c93def1f3bf34df2e24e605f461dc5b0f8806c4110138a",
+      "bytes": 48006
+    },
+    "app/briefing_schedule.py": {
+      "sha256": "b345bdf4eb91b9a60618e412813847aaa9e82ef15fea4e2ce5a89f53350f4c42",
+      "bytes": 19608
+    },
+    "app/business_type.py": {
+      "sha256": "714fa266174beda2984bf79711c71aaf0999c2fe014762d9ddd6873f73ce5784",
+      "bytes": 14383
+    },
+    "app/equipment_reader.py": {
+      "sha256": "f4651c8cd38fb70ada0dcefd4efe7f242d4288328e2328983a46eb41a2704885",
+      "bytes": 28149
+    },
+    "app/file_layout.py": {
+      "sha256": "c88061db430afa9f652c2e72714ffc28540dd06e6b6bc956d35376b7cd16ecc3",
+      "bytes": 44621
+    },
+    "app/fusion_client.py": {
+      "sha256": "9d7c876b85f1cdfb04f1f8a1192b627b698726455dfebab5a7910a99e7d06a9c",
+      "bytes": 16775
+    },
+    "app/gui.py": {
+      "sha256": "6fc182f532af1af203e2fb91ee9049f43c825071e8c31307f415a7b8725f341a",
+      "bytes": 1063
+    },
+    "app/history_repair.py": {
+      "sha256": "12ea64f1502c54d08eed5853843c62c0ef2156b85801ffc51f9debafc9ba7cab",
+      "bytes": 13242
+    },
+    "app/inventory.py": {
+      "sha256": "708cf0d3e0960f3fad5e29c401a058a7a9098c7e624dab73b3bebcc16d3d53d4",
+      "bytes": 20683
+    },
+    "app/ledger.py": {
+      "sha256": "da155fbc62f94afcdcf311c8e4eb43d64cdb422c30c67b4d9f0c4f6c31865297",
+      "bytes": 11215
+    },
+    "app/ledger_workbook.py": {
+      "sha256": "a0f8bfc1f37884073843771c50b678537872a17e7d920d4d79c5ac6832975e34",
+      "bytes": 10341
+    },
+    "app/local_analysis.py": {
+      "sha256": "a8820b4673d462d200b0a1bc27de7efc0bcd4178ebfb51a560ab4059e1c28c9f",
+      "bytes": 43715
+    },
+    "app/local_credentials.py": {
+      "sha256": "a80a9a9d7abeec3e232d4cf13e24d828d64e7e00e282d555ff08da174a64b1a3",
+      "bytes": 331
+    },
+    "app/login_test.py": {
+      "sha256": "1384bb914e07bac070d19b800f7bb42d4dc900be0360d8db07e7919386b1f52f",
+      "bytes": 3513
+    },
+    "app/logout_watchdog.py": {
+      "sha256": "d0d7fa3fc7ea9cc64823de1989d1325857318963ab62424e98abbb9eb7f75c22",
+      "bytes": 1640
+    },
+    "app/output_paths.py": {
+      "sha256": "64d0403ae5a6e3bcc5351fb765b098b30c3d7935ff39098dddda1ad44a154f83",
+      "bytes": 999
+    },
+    "app/parse_idf_to_json.py": {
+      "sha256": "6403181cde3caf2bfad3378002faf52c0c2a94ee52eb27e843ac317bcccc8ba9",
+      "bytes": 182679
+    },
+    "app/parse_pcf_to_json.py": {
+      "sha256": "1a64c82dcadf72499fa490a8c2235636e205ab4b2395da5483bb46374ae63a5f",
+      "bytes": 53531
+    },
+    "app/path_maintenance.py": {
+      "sha256": "48ae902fdd55e5e589356eb7c806a273021fc0861cad062b723d784153931ec9",
+      "bytes": 11733
+    },
+    "app/paths.py": {
+      "sha256": "e229a6816e2b8f94375d5eed0dcc58c678c680a680c3d1bf7b83e2016f630bd4",
+      "bytes": 2285
+    },
+    "app/prefab_rules_260818.py": {
+      "sha256": "e12ee9aec9976bd9831a08f1edb34fc7afd7d64cf3647caa820a36ed25674202",
+      "bytes": 204259
+    },
+    "app/preflight.py": {
+      "sha256": "4361122e6d2d0e124cef1b275a7e6b984cf92bfbfcb32dd913ffcb8f270dd54c",
+      "bytes": 14810
+    },
+    "app/progress.py": {
+      "sha256": "1f6734883290c4e0b630f56ee9bd1c00648878be826927723cd7fb22cb4cdf1f",
+      "bytes": 5443
+    },
+    "app/publication_worker.py": {
+      "sha256": "98499289940527984d0f21025fd9e1c2d55c3989849a9c0a032e7fe57b89aa04",
+      "bytes": 4580
+    },
+    "app/push_settings.py": {
+      "sha256": "c0d4350d1c9c212fdd820ca9790bac248183e08e0de8ae8d9e2b9ae0919dc59c",
+      "bytes": 5203
+    },
+    "app/push_setup.py": {
+      "sha256": "73fd029ec07245c1775bbbb89a90373ea19cadf7ab5b4d861518e62b0c4ced59",
+      "bytes": 8858
+    },
+    "app/reporting.py": {
+      "sha256": "175235260d39fcc258eeef450bcf999c328b416873c474a3edf276155b358121",
+      "bytes": 21139
+    },
+    "app/runtime_logging.py": {
+      "sha256": "bc2b232f9a8d6c05f0d6f016a58fa19adcdf441a73146110eb269e197ee84948",
+      "bytes": 4360
+    },
+    "app/scheduler.py": {
+      "sha256": "a3215034d781cdc6591ec249d1b32e1355bc501bc492afc5f56cea7defaee581",
+      "bytes": 15566
+    },
+    "app/scope_review.py": {
+      "sha256": "5bf9513539d08414832cfea66822fcbcf68c100ceabacfed52e76545975b906d",
+      "bytes": 5333
+    },
+    "app/sync.py": {
+      "sha256": "337da86907674b9c54952bf6ec505e5912aebce685ec90b71381461107dc6acb",
+      "bytes": 40241
+    },
+    "app/wechat_delivery.py": {
+      "sha256": "76afdc965505656f89e6b92549c656b427f03e1ca3e432caa70e0bd4affe6cce",
+      "bytes": 10181
+    },
+    "app/wechat_test_send.py": {
+      "sha256": "5d40f5278fd3a6d8659db0194f826b704ce290ed8521dc2839154bcd5ca4af8b",
+      "bytes": 6983
+    },
+    "app/weld_classification.py": {
+      "sha256": "53e748867c3a55e55a20406e96f7012e209bb2f7f07b559bd6047aaf35f797a1",
+      "bytes": 6898
+    },
+    "app/workflow.py": {
+      "sha256": "d448d7820c3a86782015a1def942447df71cf2ddb85de04267181597c5d48868",
+      "bytes": 13966
+    },
+    "app/台账.py": {
+      "sha256": "74c6ab51f89b74d2a559d87961d969585ef02175fbb481f10eaf16d3f8f088be",
+      "bytes": 28371
+    },
+    "approved_download_plan.json": {
+      "sha256": "200e9c6a81d7171fd079b46eaa76ed4d3b5bc6a00d91ad8d9071e28fda1e808c",
+      "bytes": 514
+    },
+    "document_coding_rules.json": {
+      "sha256": "1dd7f736f2bcf21c5e8c7bd0322c7f8ad9a31ff27b2e9d385f96f4d1d824a27c",
+      "bytes": 83965
+    },
+    "main.py": {
+      "sha256": "0fbb52466a3524a5fb583008ea1f5193cc030c7f89e994c022ea0a739ec9fd99",
+      "bytes": 886
+    },
+    "maintenance/wechat_push.example.json": {
+      "sha256": "b6ffb558b4e1e09c6596d65990ba34bb0cbab75ed04a710c4773d4443f5b10fc",
+      "bytes": 360
+    },
+    "maintenance/启动续读盘点.cmd": {
+      "sha256": "12ddeffae0963862206587f156eca8781b971ea63c8056a0c4b521a8fdbaaff6",
+      "bytes": 478
+    },
+    "maintenance/安装依赖.cmd": {
+      "sha256": "7c0fa65b40e29f13770d9ba9f694633792130da839037b962ac727c6edb38b6e",
+      "bytes": 578
+    },
+    "maintenance/检查程序完整性.cmd": {
+      "sha256": "c2e73bdddef4196e8e6f74a0c3ddb888cac9c848aad04f9875a0e3d2103b1c35",
+      "bytes": 227
+    },
+    "maintenance/解析本地管道文件.cmd": {
+      "sha256": "bb746f66242e7d343fb6fab58666d2ed91e40e8b6c36a404e5c1eacc135f7bb7",
+      "bytes": 197
+    },
+    "material_split_rules.json": {
+      "sha256": "35817afd181a703ddcf0df24b340c6f6cebab70cac2c521af662d631a323d849",
+      "bytes": 14169
+    },
+    "requirements.txt": {
+      "sha256": "02eedd7871002eeb5862577ea7a3752c01113af2e2c14be0a23685f1b18bafd2",
+      "bytes": 637
+    },
+    "wechat_push/__init__.py": {
+      "sha256": "54879fecfd1e05b4085afc5559e5e91b5c2b260dc225025c483c44f427791dda",
+      "bytes": 80
+    },
+    "wechat_push/desktop_guard.py": {
+      "sha256": "3b52bec36dfb35a85c5965b347d3c705356bc886227119cfdf3b77bc60a0520e",
+      "bytes": 16886
+    },
+    "wechat_push/errors.py": {
+      "sha256": "39bb7ae0cddb1390c145ccdd677060339f6553db4268f18d38a42d368e115229",
+      "bytes": 224
+    },
+    "wechat_push/uia.py": {
+      "sha256": "3046ae2c81f6f752318e8cd6a5bcf6995fe0e28727b85c740bd2a2a7489cbf0a",
+      "bytes": 16347
+    },
+    "wechat_push/uia_profile.json": {
+      "sha256": "f52f230f43d8e8e1960e522552082cc90ca1305a7b84dc6906ce5dd5223a6bca",
+      "bytes": 238
+    },
+    "启动正式下载.cmd": {
+      "sha256": "fcc58ff001a48372fa43e91443ad9aaf377d1fef4eb8a63b008eb1682d261909",
+      "bytes": 717
+    },
+    "安全退出.cmd": {
+      "sha256": "90dc8c09b20cbd38b4e51e8d4ca7ccfc4100481b7162084f8db90eb9c5a40416",
+      "bytes": 306
+    },
+    "恢复微信发送.cmd": {
+      "sha256": "8e22b65182fffe5011a641bc271b95e9c4b5a7df13b7ac192e900193e04ad668",
+      "bytes": 332
+    },
+    "打开文件台账.cmd": {
+      "sha256": "1fb110837d9d430233fd3d2ec6f25e24e08d96fb419528f5f78f8cbd8b02f98c",
+      "bytes": 381
+    },
+    "整理文件目录.cmd": {
+      "sha256": "44da20fe8718793097bbcb1bc97e21dd70b771eb5fb23baa037e01310125e9a8",
+      "bytes": 1284
+    },
+    "生成管道简报.cmd": {
+      "sha256": "e43db5d8d1d105b235e34eb313195f025b43e1ff20b32ad1f367736d03f7a5e0",
+      "bytes": 168
+    },
+    "紧急停止.cmd": {
+      "sha256": "013be147d127f2e5432934887a1e6a2f89d93b5b4b13243096f30975529d9d40",
+      "bytes": 169
+    },
+    "app/path_maintenance_launcher.py": {
+      "sha256": "9c777b03cdae84a1bcfc3111292741187201aa26f9d307608c580edf620f30fb",
+      "bytes": 2656
+    },
+    "app/archive_cache.py": {
+      "sha256": "9a4c6b8eb4b9ecf7f3d6a6e93fce8f3e737de49cbf055d5c7c5f2b2417773e8c",
+      "bytes": 13219
+    },
+    "app/migration_recovery.py": {
+      "sha256": "470c0c0e56f826387bdf704df8d152d435c748f0f34ad01d36c7a019a77b4255",
+      "bytes": 5161
+    }
+  },
+  "initial_inventory_exception_version_ids": [
+    "29935588"
+  ],
+  "daily_inventory_before_download": true,
+  "daily_push_encoding": "utf-8-sig",
+  "briefing_prepare_beijing": "10:40",
+  "wechat_push_beijing": "11:00",
+  "ncc_statistics_basis": "workspace + active content ID + current version; history excluded",
+  "download_priority_units": [
+    213,
+    27,
+    37,
+    38,
+    39
+  ],
+  "download_priority_order": [
+    "priority_units",
+    "new_files",
+    "updated_files"
+  ],
+  "patch_release": "2026.10.31-auto-migration-recovery.1",
+  "patch_generated_at_beijing": "2026-10-31T12:51:31.932864+08:00",
+  "patch_description": "Recover journaled file moves asynchronously outside the download window; preserve manual stop ownership, retry with visible state, and keep daily publication independent."
+}

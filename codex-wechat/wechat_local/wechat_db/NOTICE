@@ -1,0 +1,6 @@
+This component derives from wechatauto-replica 1.2.7.0, db.py.
+Source: https://github.com/fanyuantaier/wechatauto-replica
+Revision: d322c4a9b1124228820bab363e5676016f188fc6
+License: Apache License, Version 2.0 (see LICENSE).
+Local changes: relative logger; removal of Listener and GroupMemberWatcher; local diagnostic labels.
+No upstream GUI, OCR, sending, or automatic-reply modules are used.
