@@ -1,5 +1,6 @@
 """Persistent local archive and reply jobs; no remote server or vector model."""
 import json
+import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -87,6 +88,10 @@ class State:
                  at if status == 'running' else None, at if status in ('generated', 'failed') else None, identifier))
             if file_result is not None:
                 self.db.execute('UPDATE jobs SET file_result=? WHERE id=?', (json.dumps(file_result, ensure_ascii=False), identifier))
+        import logging
+        logger=logging.getLogger(__name__)
+        level=logging.ERROR if status=='failed' else logging.WARNING if status in ('uncertain','not_sent') else logging.INFO
+        logger.log(level,'微信任务状态：job_id=%s；status=%s；reason=%s',identifier,status,error or '无')
 
     def file_selection(self, chat_id, sender):
         row = self.db.execute('SELECT payload FROM file_selections WHERE chat_id=? AND sender=?', (chat_id, sender)).fetchone()
@@ -172,3 +177,26 @@ class State:
 
     def close(self):
         self.db.close()
+
+
+class DesktopLock:
+    def __init__(self, path):
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        self.file = open(path, 'a+b')
+        self.file.seek(0, 2)
+        if self.file.tell() == 0:
+            self.file.write(b'0'); self.file.flush()
+        self.file.seek(0)
+        try:
+            if os.name == 'nt':
+                import msvcrt
+                msvcrt.locking(self.file.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(self.file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            self.file.close()
+            raise RuntimeError('A WeChat desktop bridge is already running for this cache') from None
+
+    def close(self):
+        self.file.close()

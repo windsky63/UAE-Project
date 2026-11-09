@@ -12,11 +12,12 @@ import socket
 import sqlite3
 import shutil
 import sys
+import traceback
 from urllib.parse import parse_qs, urlsplit, quote
 from urllib.request import Request, urlopen
 import webbrowser
 
-from manager import Manager, HOME
+from manager import Manager, HOME, clean_log, now
 from codex_chat import CodexChat
 
 
@@ -63,6 +64,22 @@ def handler(manager, token, static=None, allowed_hosts=None, direct_access=False
 
         def log_message(self, *args):
             pass
+
+        def failure(self, detail):
+            identity=secrets.token_hex(6)
+            # Log paths, never query strings, request bodies, cookies or tokens.
+            message=(f'[{now()}] [ERROR] 管理中心请求失败：request_id={identity}；'
+                     f'method={self.command}；path={urlsplit(self.path).path}\n'+traceback.format_exc())
+            print(clean_log(message),file=sys.stderr,flush=True)
+            return self.respond(dict(detail=detail,request_id=identity),500)
+
+        def handle_one_request(self):
+            try:
+                super().handle_one_request()
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                # Closing a tab can interrupt headers, bodies, redirects or SSE.
+                # The connection is gone; sending an error response would fail too.
+                self.close_connection = True
 
         def respond(self, value, code=200):
             data = json.dumps(value, ensure_ascii=False).encode('utf-8')
@@ -152,12 +169,23 @@ def handler(manager, token, static=None, allowed_hosts=None, direct_access=False
                         return
                     if parsed.path == '/api/overview':
                         return self.respond(manager.overview())
+                    if parsed.path == '/api/history-cleanup':
+                        return self.respond(manager.history_cleanup_status())
+                    if parsed.path == '/api/ima':
+                        from ima_control import snapshot
+                        return self.respond(snapshot(manager))
+                    if parsed.path == '/api/ima/records':
+                        from ima_control import records
+                        return self.respond(records(manager, get('kind', 'plan'), offset, limit,
+                                                    get('search'), get('status')))
                     if parsed.path == '/api/publications':
                         return self.respond(manager.publications(get('date')))
                     if parsed.path == '/api/tasks':
                         return self.respond(dict(items=manager.tasks(get('tool'),limit)))
                     if parsed.path == '/api/config':
                         return self.respond(manager.config(get('tool')))
+                    if parsed.path == '/api/nas/hash-status':
+                        return self.respond(manager.nas_hash_status())
                     if parsed.path == '/api/files':
                         return self.respond(manager.files(get('category','downloads'),get('search'),offset,limit,
                             filters=json.loads(get('filters','{}')),sort=get('sort','name'),direction=get('direction','asc'),
@@ -182,10 +210,12 @@ def handler(manager, token, static=None, allowed_hosts=None, direct_access=False
                             shutil.copyfileobj(stream,self.wfile)
                         return
                     return self.respond(dict(detail='接口不存在'),404)
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                    raise
                 except (ValueError,KeyError,OSError) as exc:
                     return self.respond(dict(detail=str(exc)[:500]),400)
                 except Exception:
-                    return self.respond(dict(detail='读取失败，请检查本地数据库或工具目录。'),500)
+                    return self.failure('读取失败，请检查本地数据库或工具目录。')
             supplied = static / parsed.path.lstrip('/')
             path = supplied.resolve()
             if not path.is_relative_to(static):
@@ -212,6 +242,9 @@ def handler(manager, token, static=None, allowed_hosts=None, direct_access=False
                 if not 0 < length <= 1024 * 1024:
                     raise ValueError('请求内容大小无效')
                 data = json.loads(self.rfile.read(length))
+                if self.path == '/api/ima/query':
+                    from ima_control import query
+                    return self.respond(query(manager, data['operation'], data.get('data', {})))
                 if self.path == '/api/codex/sessions':
                     return self.respond(chat.create(data.get('title','新对话'),data.get('mode','read-only'),
                                                    data.get('model',''),data.get('effort','medium'),data.get('transport','inherit')))
@@ -233,18 +266,26 @@ def handler(manager, token, static=None, allowed_hosts=None, direct_access=False
                         raise ValueError('请先确认推送内容及接收会话')
                     return self.respond(manager.push_publications(data['date'],data['kind']))
                 if self.path == '/api/actions/all':
-                    return self.respond(manager.bulk_action(data['action']))
+                    if 'tools' in data and not isinstance(data['tools'], list):
+                        raise ValueError('工具选择必须是列表')
+                    return self.respond(manager.bulk_action(data['action'], **({'tools': data['tools']} if 'tools' in data else {})))
                 if self.path == '/api/tasks/clear':
                     return self.respond(manager.clear_tasks(data['tool']))
                 if self.path == '/api/logs/clear':
                     return self.respond(manager.clear_logs(data.get('tool',''),data.get('scope','history')))
                 if self.path == '/api/config':
                     return self.respond(manager.save_config(data['tool'],data['data'],data.get('revision','')))
+                if self.path == '/api/nas/hash-check':
+                    return self.respond(manager.nas_hash_check())
+                if self.path == '/api/nas/setup':
+                    return self.respond(manager.nas_setup())
                 return self.respond(dict(detail='接口不存在'),404)
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                raise
             except (ValueError,KeyError,OSError) as exc:
                 return self.respond(dict(detail=str(exc)[:500]),400)
             except Exception:
-                return self.respond(dict(detail='操作失败，请查看运行日志。'),500)
+                return self.failure('操作失败，请查看运行日志。')
 
     return Handler
 

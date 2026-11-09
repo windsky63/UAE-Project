@@ -1,6 +1,6 @@
 """Durable offline analysis queue, running separately from the downloader."""
 
-from app_paths import HOME, CODE
+from paths import HOME, CODE
 import argparse
 from contextlib import closing, contextmanager
 from datetime import datetime, timedelta, timezone
@@ -14,18 +14,33 @@ import sys
 import threading
 import time
 
-from output_paths import check_output_directory
+from paths import check_output_directory
 from analysis_settings import load as load_analysis_settings
-from runtime_logging import BoundedLog, EventGate
+from runtime_logging import BoundedLog, EventGate, operation_log
 from fusion_client import now
 
 _child = None
+
+# Reserve the download window for downloads; migration recovery uses the same
+# time predicate independently of this analysis scheduling switch.
+PAUSE_ANALYSIS_DURING_DOWNLOAD_WINDOW = True
 
 
 def in_download_window(at=None):
     """Reserve 02:00 <= Beijing time < 10:30 for downloads every day."""
     at = (at or now()).astimezone(timezone(timedelta(hours=8)))
     return 120 <= at.hour * 60 + at.minute < 630
+
+
+def analysis_paused_for_schedule(base_dir=HOME, at=None):
+    """Keep parsing after today's configured briefing send time, in Beijing time."""
+    if not PAUSE_ANALYSIS_DURING_DOWNLOAD_WINDOW:
+        return False
+    from push_settings import load_settings
+    at = (at or now()).astimezone(timezone(timedelta(hours=8)))
+    send_time = load_settings(base_dir)['briefing_send_time_beijing']
+    hour, minute = map(int, send_time.split(':'))
+    return in_download_window(at) or at.hour * 60 + at.minute < hour * 60 + minute
 
 
 class ProgressLog:
@@ -62,13 +77,16 @@ def activity(log, label, interval=30, announce=True):
     """Report liveness during blocking work, without inventing a percentage."""
     started = time.monotonic()
     state = [label]
+    step_started = [started]
     stopped = threading.Event()
     def phase(message):
         state[0] = message
+        step_started[0] = time.monotonic()
         log(message)
     def watch():
         while not stopped.wait(interval):
-            log(f'仍在处理：{state[0]}；本阶段任务累计耗时 {time.monotonic()-started:.1f} 秒；进程存活，不代表解析已完成')
+            log(f'仍在处理：{state[0]}；当前步骤耗时 {time.monotonic()-step_started[0]:.1f} 秒；'
+                f'本阶段任务累计耗时 {time.monotonic()-started:.1f} 秒；进程存活，不代表解析已完成')
     if announce:
         phase(label)
     thread = threading.Thread(target=watch, daemon=True, name='analysis-progress')
@@ -147,7 +165,12 @@ class AnalysisQueue:
         self.cache.mkdir(parents=True, exist_ok=True)
         self.log = log or ProgressLog()
         self._last_scan_summary = None
+        self._source_watch = None
+        self._source_revision = None
+        self._last_full_scan = float('-inf')
+        self._last_cleanup = float('-inf')
         self._export_dirty, self._last_export = False, float('-inf')
+        self._export_failed = False
         self.version = parser_version()
         self.db = sqlite3.connect(self.cache / 'queue.sqlite3', timeout=5)
         self.db.row_factory = sqlite3.Row
@@ -160,8 +183,6 @@ class AnalysisQueue:
             attempts INTEGER NOT NULL DEFAULT 0, retry_at REAL NOT NULL DEFAULT 0,
             result_path TEXT, error TEXT, updated REAL NOT NULL);
           CREATE INDEX IF NOT EXISTS jobs_pending ON jobs(active,state,retry_at);
-          -- Find a completed replacement without scanning all current jobs.
-          CREATE INDEX IF NOT EXISTS jobs_replacement ON jobs(project,file_id,active,state);
           -- Find a completed replacement without scanning all current jobs.
           CREATE INDEX IF NOT EXISTS jobs_replacement ON jobs(project,file_id,active,state);
           CREATE TABLE IF NOT EXISTS file_inventory(
@@ -182,25 +203,69 @@ class AnalysisQueue:
           CREATE VIEW IF NOT EXISTS current_archive_inventory AS
             SELECT a.* FROM archive_inventory a JOIN jobs j ON j.key=a.job_key WHERE j.active=1;
           CREATE INDEX IF NOT EXISTS archive_inventory_sha ON archive_inventory(json_extract(payload,'$.sha256'));
+          CREATE TABLE IF NOT EXISTS analysis_exports(name TEXT PRIMARY KEY,revision INTEGER NOT NULL);
+          INSERT OR IGNORE INTO analysis_exports VALUES('results',0);
+          INSERT OR IGNORE INTO analysis_exports VALUES('ledger',-1);
+          INSERT OR IGNORE INTO analysis_exports VALUES('snapshot',-1);
+          CREATE TABLE IF NOT EXISTS analysis_source_state(name TEXT PRIMARY KEY,value TEXT NOT NULL);
         ''')
         if 'retryable' not in {r['name'] for r in self.db.execute('PRAGMA table_info(jobs)')}:
             self.db.execute('ALTER TABLE jobs ADD COLUMN retryable INTEGER NOT NULL DEFAULT 1')
             self.db.commit()
+        if 'filename' not in {r['name'] for r in self.db.execute('PRAGMA table_info(jobs)')}:
+            self.db.execute('ALTER TABLE jobs ADD COLUMN filename TEXT')
+            self.db.commit()
+        self._export_dirty = self.snapshot_pending('ledger')
+
+    def snapshot_pending(self, name='snapshot'):
+        return self.db.execute("SELECT revision FROM analysis_exports WHERE name='results'").fetchone()[0] != self.db.execute(
+            'SELECT revision FROM analysis_exports WHERE name=?', (name,)).fetchone()[0]
+
+    def mark_exported(self, name='snapshot'):
+        with self.db:
+            self.db.execute("UPDATE analysis_exports SET revision=(SELECT revision FROM analysis_exports WHERE name='results') WHERE name=?", (name,))
+
+    def changed(self):
+        self.db.execute("UPDATE analysis_exports SET revision=revision+1 WHERE name='results'")
+        self._export_dirty = True
 
     def close(self, *, defer_exports=False):
         try:
             if not defer_exports:
-                self.refresh_ledger_export(force=True)
+                self.refresh_ledger_export(force=not self._export_failed)
         finally:
             self.db.close()
+            if self._source_watch is not None:
+                self._source_watch.close()
+
+    def discover_if_changed(self):
+        """Watch committed ledger writes cheaply; periodically recheck disk too."""
+        if self._source_watch is None:
+            self._source_watch = sqlite3.connect(self.database.as_uri() + '?mode=ro', uri=True, timeout=5)
+        revision = self._source_watch.execute('PRAGMA data_version').fetchone()[0]
+        if revision == self._source_revision and time.monotonic() - self._last_full_scan < 300:
+            return 0
+        # Store the revision before scanning: writes during the scan must cause
+        # another pass. No long read transaction is held between polls.
+        self._source_revision = revision
+        result = self.discover()
+        self._last_full_scan = time.monotonic()
+        return result
 
     def refresh_ledger_export(self, force=False):
-        busy = any(self.counts().get(state, 0) for state in ('pending', 'running')) if self._export_dirty else False
+        counts = self.counts() if self._export_dirty else {}
+        busy = any(counts.get(state, 0) for state in ('pending', 'running'))
         interval = 900 if busy else 60
+        if busy and not force and self._last_export == float('-inf'):
+            self._last_export = time.monotonic()
+            return  # Spend the first busy interval parsing, not rebuilding Excel.
         if not self._export_dirty or (not force and time.monotonic() - self._last_export < interval):
             return
         from types import SimpleNamespace
         from archive_index import readonly
+        # Throttle failed exports too: an unavailable output folder must not
+        # trigger a full workbook rebuild after every parsed file.
+        self._last_export = time.monotonic()
         try:
             with closing(readonly(self.database)) as db:
                 tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
@@ -211,9 +276,12 @@ class AnalysisQueue:
                     all=lambda sql, args=(): list(db.execute(sql, args))),
                     supplemental=False, quiet=True)
             self._export_dirty = False
+            self._export_failed = False
+            self.mark_exported('ledger')
             self._last_export = time.monotonic()
             self.log(f'Excel文件台账已更新：{target}；包含平台原件、附件及当前解压文件。')
         except (OSError, ValueError, TypeError, KeyError, sqlite3.Error) as exc:
+            self._export_failed = True
             self.log(f'文件台账导出暂未完成：{exc}；解析结果与解压索引已保存，下次重试。')
 
     def discover(self):
@@ -225,24 +293,53 @@ class AnalysisQueue:
             sources, inventory = ledger_sources(self.database, self.base)
         inserted = 0
         requeued = 0
+        changed_paths = 0
+        current_keys = []
+        digest = hashlib.sha256()
+        for record in inventory:
+            digest.update(json.dumps([record.get(name) for name in
+                ('project', 'id', 'filename', 'path', 'status', 'bytes', 'sha256', 'state')],
+                ensure_ascii=True, separators=(',', ':')).encode())
+        inventory_signature = digest.hexdigest()
+        previous = self.db.execute("SELECT value FROM analysis_source_state WHERE name='inventory'").fetchone()
+        inventory_changed = previous is None or previous[0] != inventory_signature
         with self.db:
-            self.db.execute('UPDATE jobs SET active=0')
             for index, source in enumerate(sources, 1):
                 item = source['item']
                 key = candidate_key(source, item, self.version)
+                current_keys.append(key)
                 inserted += self.db.execute('''INSERT OR IGNORE INTO jobs
                     (key,project,file_id,path,origin,expected_sha,updated) VALUES(?,?,?,?,?,?,?)''',
                     (key, source['project'], item['id'], str(source['path']), source['origin'], item.get('sha256'), time.time())).rowcount
-                self.db.execute('UPDATE jobs SET active=1,path=? WHERE key=?', (str(source['path']), key))
-                saved = self.db.execute('SELECT state,result_path FROM jobs WHERE key=?', (key,)).fetchone()
+                changed_paths += self.db.execute('''UPDATE jobs SET active=1,path=?,filename=? WHERE key=?
+                    AND (active!=1 OR path IS NOT ? OR filename IS NOT ?)''',
+                    (str(source['path']), item['filename'], key, str(source['path']), item['filename'])).rowcount
+                saved = self.db.execute('SELECT state,result_path,error FROM jobs WHERE key=?', (key,)).fetchone()
                 saved_path = self.cache / saved['result_path'] if saved['result_path'] else None
-                if saved['state'] in ('done', 'failed') and saved_path and (not saved_path.is_file()
+                suffix = Path(item['filename']).suffix.lower()
+                if (saved['state'] == 'failed' and saved['error']
+                        and (suffix == '.pdf' or (suffix in ('.pcf', '.zip', '.7z')
+                             and 'IDF未识别到-6管线记录' in saved['error']))):
+                    # Older code derived the parser from an extensionless staged
+                    # path and sent PDFs/PCFs/archives to IDF. Reset these failures; preserve
+                    # other completed per-file caches.
+                    self.db.execute("""UPDATE jobs SET state='pending',attempts=0,retryable=1,
+                        error='旧暂存路径无扩展名导致格式误入IDF分支，已按台账文件名重新登记'
+                        WHERE key=?""", (key,))
+                    requeued += 1
+                elif saved['state'] in ('done', 'failed') and saved_path and (not saved_path.is_file()
                         or (saved_path.parent / 'extraction.cleaned').is_file()):
                     self.db.execute("UPDATE jobs SET state='pending',attempts=0,retryable=1,error='缓存缺失，等待重新分析' WHERE key=?", (key,))
                     requeued += 1
                 if time.monotonic() - last_progress >= 5:
                     self.log(f'扫描进度：{index}/{len(sources)} 个本地候选文件；新增任务 {inserted}；当前 {source["origin"]}')
                     last_progress = time.monotonic()
+            retired = self.db.execute('''UPDATE jobs SET active=0 WHERE active=1
+              AND key NOT IN (SELECT value FROM json_each(?))''', (json.dumps(current_keys),)).rowcount
+            if inserted or requeued or retired or changed_paths or inventory_changed:
+                self.changed()
+            if inventory_changed:
+                self.db.execute("INSERT OR REPLACE INTO analysis_source_state VALUES('inventory',?)", (inventory_signature,))
         summary = self.counts()
         unavailable = sum(r['state'] != '本地文件可分析' for r in inventory)
         signature = (summary, unavailable)
@@ -251,7 +348,7 @@ class AnalysisQueue:
             if not sources:
                 self.log('没有可解析的本地候选文件；请核对台账、下载目录和实际文件是否齐全。')
         self._last_scan_summary = signature
-        self._export_dirty = self._export_dirty or bool(inserted or requeued or signature != getattr(self, '_export_signature', None))
+        self._export_dirty = self._export_dirty or bool(inserted or requeued or retired or changed_paths)
         self._export_signature = signature
         self.refresh_ledger_export()
         return inserted
@@ -269,6 +366,8 @@ class AnalysisQueue:
         # Called only while holding the exclusive process lock.
         with self.db:
             recovered = self.db.execute("UPDATE jobs SET state='pending',error='上次分析中断，等待恢复' WHERE state='running'").rowcount
+            if recovered:
+                self.changed()
         if recovered:
             self.log(f'中断恢复：已将 {recovered} 个上次未完成的任务重新排队。')
 
@@ -293,7 +392,8 @@ class AnalysisQueue:
             self.log(f'文件大小：{before.st_size:,} 字节；任务 {item["key"][:12]}')
             with activity(self.log, f'读取并解析 {item["origin"]}', announce=False) as progress:
                 _, report, result_path = analyze(sources_override=[{
-                    'path': path, 'project': item['project'], 'origin': item['origin']}],
+                    'path': path, 'project': item['project'], 'origin': item['origin'],
+                    'item': {'filename': item['filename'] or path.name}}],
                     output=self.cache / 'jobs' / item['key'], progress=progress,
                     extraction_cache=self.cache / 'extraction_cache')
             after = path.stat()
@@ -330,16 +430,11 @@ class AnalysisQueue:
                     for r in report['pipeline_results']])
             self.db.execute('UPDATE jobs SET state=?,error=?,result_path=?,retry_at=?,updated=?,retryable=? WHERE key=?',
                             (state, error, str(result_path) if result_path else None, time.time() + 60, time.time(), int(retryable), item['key']))
+            self.changed()
         self._export_dirty = True
         self.refresh_ledger_export()
         if state == 'done':
-            from archive_cache import cleanup_history
-            try:
-                cleaned = cleanup_history(self)
-                if cleaned:
-                    self.log(f'已清理旧版解压目录/缓存 {cleaned} 个；保留原始压缩包、版本记录和解析报告。')
-            except (OSError, ValueError, sqlite3.Error) as exc:
-                self.log(f'旧版解压文件暂未清理：{exc}；解析结果已保存，下次完成任务后重试。')
+            self.cleanup_old_cache(force=not any(self.counts().get(s, 0) for s in ('pending', 'running')))
         retry_note = '；永久性错误，不自动重试' if state == 'failed' and not retryable else ''
         self.log(f'文件结束：{item["origin"]} · {state}{retry_note}；耗时 {time.monotonic()-started:.1f} 秒；{self.describe(self.counts())}')
         if report is not None:
@@ -353,6 +448,19 @@ class AnalysisQueue:
             self.log(f'失败原因：{item["origin"]}：{error}；' + policy)
         return True
 
+    def cleanup_old_cache(self, *, force=False):
+        if not force and time.monotonic() - self._last_cleanup < 60:
+            return
+        from archive_cache import cleanup_history
+        try:
+            cleaned = cleanup_history(self)
+            if cleaned:
+                self.log(f'已清理旧版解压目录/缓存 {cleaned} 个；保留原始压缩包、版本记录和解析报告。')
+        except (OSError, ValueError, sqlite3.Error) as exc:
+            self.log(f'旧版解压文件暂未清理：{exc}；解析结果已保存，下次维护时重试。')
+        finally:
+            self._last_cleanup = time.monotonic()
+
 
 def cached_snapshot(database, *, output, base_dir=None, cache=None, prefab_rule='none'):
     """Read committed per-file results. Never extract or parse original files."""
@@ -361,19 +469,21 @@ def cached_snapshot(database, *, output, base_dir=None, cache=None, prefab_rule=
     base = Path(base_dir).resolve() if base_dir else database.parent.parent
     cache = check_output_directory(cache or base / 'runtime/file_analysis', database=database, base_dir=base)
     sources, inventory = ledger_sources(database, base)
+    version = parser_version()
+    keys = [candidate_key(source, source['item'], version) for source in sources]
     reports, pending, failed, completed, jobs = [], 0, 0, 0, {}
     cache_db = cache / 'queue.sqlite3'
     if cache_db.exists():
         try:
             with closing(sqlite3.connect(cache_db.as_uri() + '?mode=ro', uri=True)) as db:
                 db.row_factory = sqlite3.Row
-                jobs = {row['key']: dict(row) for row in db.execute('SELECT key,state,result_path,error FROM jobs')}
+                jobs = {row['key']: dict(row) for row in db.execute('''SELECT key,state,result_path,error FROM jobs
+                    WHERE key IN (SELECT value FROM json_each(?))''', (json.dumps(keys),))}
         except sqlite3.OperationalError:
             pass  # The worker may be initializing its independent database.
-    version = parser_version()
-    for source in sources:
+    for source, key in zip(sources, keys):
         item = source['item']
-        job = jobs.get(candidate_key(source, item, version))
+        job = jobs.get(key)
         if not job or job['state'] in ('pending', 'running'):
             pending += 1
             item['analysis_state'] = '处理中' if job and job['state'] == 'running' else '待分析'
@@ -436,7 +546,7 @@ def wait_for_analysis_exit(base_dir, log=print):
 def ensure_background_worker(base_dir, database):
     """Fast download hook; heavy parsing happens only in an independent process."""
     global _child
-    if in_download_window():
+    if analysis_paused_for_schedule(base_dir):
         return
     if _child and _child.poll() is None:
         return
@@ -450,8 +560,9 @@ def ensure_background_worker(base_dir, database):
             return
     env = {k: v for k, v in os.environ.items() if k not in ('FUSIONLIVE_USERNAME', 'FUSIONLIVE_PASSWORD')}
     env.update(PYTHONIOENCODING='utf-8', PYTHONDONTWRITEBYTECODE='1', PYTHONUNBUFFERED='1')
-    BoundedLog(cache / 'worker.log').write('启动后台解析；运行进度见 progress.log，此文件仅保存标准错误。\n')
-    with (cache / 'worker.log').open('a', encoding='utf-8') as log:
+    worker_log = operation_log('analysis-worker.log', base)
+    BoundedLog(worker_log).write('启动后台解析；此文件保存标准错误，进度见 analysis.log。\n')
+    with worker_log.open('a', encoding='utf-8') as log:
         settings = load_analysis_settings(base)
         _child = subprocess.Popen([sys.executable, '-B', str(CODE / 'analysis_worker.py'),
             '--database', str(database), '--base-dir', str(base), '--watch', '--idle-exit', str(settings['analysis_auto_idle_exit_seconds'])],
@@ -464,7 +575,7 @@ def notify_download_completed(base_dir, database):
         ensure_background_worker(base_dir, database)
     except Exception as exc:
         # Analysis can never turn a successfully downloaded file into a failure.
-        print('后台分析暂未启动，不影响下载：' + type(exc).__name__, flush=True)
+        print(f'后台分析暂未启动，不影响下载：{type(exc).__name__}：{exc}', flush=True)
 
 
 def main(argv=None):
@@ -495,9 +606,11 @@ def main(argv=None):
     cache = check_output_directory(base / 'runtime/file_analysis', database=args.database, base_dir=base)
     cache.mkdir(parents=True, exist_ok=True)
     stop = cache / 'stop.request'
-    log = ProgressLog(cache / 'progress.log', idle_interval=args.idle_log_seconds)
-    if in_download_window():
-        log('北京时间02:00—10:30为下载时段，禁止启动解压解析；10:30后由常驻调度自动重试，或手动启动。')
+    bundled = (base.parent / '管理中心').is_dir() and (base.parent / 'codex-wechat').is_dir()
+    log = ProgressLog(operation_log('analysis.log', base) if bundled else cache / 'progress.log',
+                      idle_interval=args.idle_log_seconds)
+    if analysis_paused_for_schedule(base):
+        log('尚未到今日管道简报发送时间，或仍在下载时段；暂不启动解压解析，满足时间条件后由常驻调度自动重试。')
         return 0
     log(f'解析程序启动；台账 {args.database.resolve()}；缓存目录 {cache}；进度日志 {cache / "progress.log"}')
     if args.resume:
@@ -519,35 +632,36 @@ def main(argv=None):
         log(f'解析缓存版本：{queue.version}；版本和文件信息不变的已完成结果直接复用')
         try:
             queue.recover()
-            if not in_download_window():
-                queue.discover()
+            if not analysis_paused_for_schedule(base):
+                queue.discover_if_changed()
             last_activity = last_scan = time.monotonic()
             last_idle = float('-inf')
-            export_pending = True
+            export_pending = queue.snapshot_pending()
             while not stop.exists():
-                if in_download_window():
-                    log('已进入北京时间02:00—10:30下载时段，解析进度已保存；暂停解析并延后汇总导出。')
+                if analysis_paused_for_schedule(base):
+                    log('当前已不在允许解析的时段；解析进度已保存，暂停解析并延后汇总导出。')
                     break
                 if time.monotonic() - last_scan >= args.poll_seconds:
-                    previous_counts = queue.counts()
-                    discovered = queue.discover()
-                    if discovered or queue.counts() != previous_counts:
+                    discovered = queue.discover_if_changed()
+                    if discovered or queue.snapshot_pending():
                         export_pending = True
                     if discovered:
                         last_activity = time.monotonic()
                     last_scan = time.monotonic()
-                if in_download_window() or stop.exists():
+                if analysis_paused_for_schedule(base) or stop.exists():
                     continue
                 if queue.process_next():
                     export_pending = True
                     last_activity = time.monotonic()
                     last_idle = float('-inf')
                     continue
+                queue.cleanup_old_cache()
                 if export_pending:
                     _, report, _ = cached_snapshot(args.database, base_dir=base, cache=cache,
                                                    output=cache / 'export_snapshots')
                     log(f'焊口表已导出：{report["weld_table_file"]}；有效焊口 {len(report["welds"])}')
                     export_pending = False
+                    queue.mark_exported()
                 if not args.watch or (args.idle_exit and time.monotonic() - last_activity >= args.idle_exit):
                     break
                 if time.monotonic() - last_idle >= args.idle_log_seconds:
@@ -556,10 +670,11 @@ def main(argv=None):
                     log(f'空闲等待：当前没有可立即执行的任务；{queue.describe(queue.counts())}{retry_note}；仍监测新文件，不会重复解析有效缓存')
                     last_idle = time.monotonic()
                 time.sleep(min(args.poll_seconds, 1))
-            if stop.exists() and not in_download_window():
+            if stop.exists() and not analysis_paused_for_schedule(base):
                 if export_pending:
                     cached_snapshot(args.database, base_dir=base, cache=cache,
                                     output=cache / 'export_snapshots')
+                    queue.mark_exported()
                 log('已收到停止请求，当前文件已处理完毕，准备退出。')
             log(f'本次运行结束：{queue.describe(queue.counts())}')
         except KeyboardInterrupt:
@@ -568,7 +683,7 @@ def main(argv=None):
             log(f'解析程序异常：{type(exc).__name__}：{exc}')
             raise
         finally:
-            queue.close(defer_exports=in_download_window())
+            queue.close(defer_exports=analysis_paused_for_schedule(base))
     log('后台解压、解析已退出，进度已保存。')
     return 0
 

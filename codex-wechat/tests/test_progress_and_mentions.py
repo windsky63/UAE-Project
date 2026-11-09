@@ -12,6 +12,7 @@ import pytest
 
 from wechat_local.codex_runner import CodexRunner
 from wechat_local.codex_settings import CodexGenerationTimeoutError, CodexIdleTimeoutError
+from wechat_local.codex_settings import CodexConnectionTimeoutError, CodexServiceError
 from wechat_local.config import LocalConfig, WechatChat, load_config
 from wechat_local.delivery import DeliveryNotSent
 from wechat_local.listener import Listener
@@ -75,6 +76,45 @@ print(json.dumps({'type':'item.completed','item':{'id':'a','type':'mcp_tool_call
 print(json.dumps({'type':'turn.completed','usage':{'output_tokens':7}}),flush=True)
 '''
     assert run_script(runner, script) == {'output_tokens': 7}
+
+
+def test_cli_network_retries_stop_without_capping_normal_reply_time():
+    config = LocalConfig().model_copy(update={'codex_connect_timeout_seconds': .15})
+    runner = CodexRunner(config)
+    script = '''import sys,json,time
+sys.stdin.read()
+for _ in range(600):
+ print(json.dumps({'type':'error','message':'error sending request: failed to connect PRIVATE_SECRET'}),flush=True)
+ time.sleep(.05)
+'''
+    with pytest.raises(CodexConnectionTimeoutError):
+        run_script(runner, script)
+
+
+@pytest.mark.parametrize('transient', [False, True])
+def test_cli_silence_or_slow_recovery_is_not_a_connection_timeout(transient):
+    runner = CodexRunner(LocalConfig().model_copy(update={'codex_connect_timeout_seconds': .1}))
+    script = 'import sys,json,time\nsys.stdin.read()\n'
+    if transient:
+        script += "print(json.dumps({'type':'error','message':'failed to connect'}),flush=True)\n"
+    script += "time.sleep(.4)\nprint(json.dumps({'type':'turn.completed','usage':{'output_tokens':3}}),flush=True)\n"
+    assert run_script(runner, script) == {'output_tokens': 3}
+
+
+def test_cli_stderr_account_error_is_sanitized_and_stops_process():
+    runner = CodexRunner(LocalConfig())
+    script = "import sys,time\nsys.stdin.read()\nsys.stderr.write('not logged in PRIVATE_SECRET\\n')\nsys.stderr.flush()\ntime.sleep(30)"
+    with pytest.raises(CodexServiceError) as error:
+        run_script(runner, script)
+    assert error.value.reason == 'account' and 'PRIVATE_SECRET' not in str(error.value)
+
+
+def test_cli_account_error_is_preserved_when_the_process_exits_immediately():
+    runner = CodexRunner(LocalConfig())
+    script = "import sys\nsys.stdin.read()\nsys.stderr.write('not logged in PRIVATE_SECRET\\n')\nsys.stderr.flush()\nsys.exit(1)"
+    with pytest.raises(CodexServiceError) as error:
+        run_script(runner, script)
+    assert error.value.reason == 'account' and 'PRIVATE_SECRET' not in str(error.value)
 
 
 def incoming(identifier='1', sender='alice', chat_id='group'):
@@ -287,7 +327,7 @@ def test_new_defaults_and_explicit_settings_are_preserved(tmp_path):
     path = tmp_path / 'config.json'
     path.write_text('{}', encoding='utf-8')
     config = load_config(path)
-    assert (config.codex_timeout_seconds, config.reply_max_age_seconds) == (600, 900)
+    assert (config.codex_timeout_seconds, config.reply_max_age_seconds) == (0, 900)
     assert config.mention_reply_sender and config.query_progress_enabled
     path.write_text(json.dumps(dict(codex_timeout_seconds=777, reply_max_age_seconds=1000,
                                    mention_reply_sender=False)), encoding='utf-8')

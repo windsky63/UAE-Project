@@ -4,6 +4,9 @@ from pathlib import Path
 import hashlib
 import json
 import sqlite3
+import os
+import subprocess
+import sys
 import tempfile
 import threading
 import unittest
@@ -14,6 +17,90 @@ import file_layout as layout
 
 
 class LayoutTests(unittest.TestCase):
+    def test_automatic_archive_matches_manual_history_destination_without_tree_scan(self):
+        old, staged = self.prepare_incremental_fixture()
+        import path_maintenance as maintenance
+        expected = [m for m in maintenance.plan(self.ledger)['moves'] if m['target'].startswith('history/')]
+        keys = self.ledger._publication_groups[('p','one')]
+        with patch('history_repair.os.walk',side_effect=AssertionError('automatic archive scanned history')):
+            proposal = layout.plan(self.ledger,untracked=False,keys=keys)
+        archives = [m for m in proposal['moves'] if m['target'].startswith('history/')]
+        self.assertEqual([m['target'] for m in archives],[m['target'] for m in expected])
+        self.assertEqual(archives[0]['target'],'history/Project/Pipe/Drawings/ISO-001.pdf')
+        layout.prepare_downloads(self.ledger,keys=keys)
+        row=self.ledger.one('SELECT path FROM file_history')
+        self.assertEqual((self.base/row['path']).read_bytes(),b'old')
+        self.assertEqual(old.read_bytes(),b'new')
+        self.assertEqual(self.ledger.one('SELECT platform_path FROM history_paths')[0],
+                         'Project/Pipe/Drawings/ISO-001.pdf')
+
+    def test_automatic_archive_preserves_same_name_and_unrelated_legacy_history(self):
+        old, staged = self.prepare_incremental_fixture()
+        existing=self.base/'history/Project/Pipe/Drawings/ISO-001.pdf'
+        existing.parent.mkdir(parents=True)
+        existing.write_bytes(b'previous history')
+        legacy=self.base/'history/version-unrelated/Elsewhere/keep.pdf'
+        legacy.parent.mkdir(parents=True)
+        legacy.write_bytes(b'keep')
+        stamp=legacy.stat().st_mtime_ns
+        keys=self.ledger._publication_groups[('p','one')]
+        layout.prepare_downloads(self.ledger,keys=keys)
+        archived=self.ledger.one('SELECT path FROM file_history')[0]
+        self.assertTrue(archived.startswith('history/Project/Pipe/Drawings/ISO-001__version-'))
+        self.assertEqual((self.base/archived).read_bytes(),b'old')
+        self.assertEqual(existing.read_bytes(),b'previous history')
+        self.assertEqual(legacy.read_bytes(),b'keep')
+        self.assertEqual(legacy.stat().st_mtime_ns,stamp)
+        self.assertEqual(old.read_bytes(),b'new')
+
+    def test_publication_reuses_protected_hash_reads_within_one_apply(self):
+        old, staged = self.prepare_incremental_fixture()
+        expected = hashlib.sha256(b'new').hexdigest()
+        reads = []
+        checksum = layout.checksum
+        def counted(path, *args, **kwargs):
+            value = checksum(path, *args, **kwargs)
+            reads.append(value)
+            return value
+        with patch('file_layout.checksum', side_effect=counted):
+            layout.prepare_downloads(self.ledger, keys=self.ledger._publication_groups[('p', 'one')])
+        self.assertLessEqual(reads.count(expected), 1 if os.name == 'nt' else 2)
+        self.assertEqual((self.base/self.ledger.one("SELECT path FROM files WHERE id='one'")[0]).read_bytes(), b'new')
+        self.assertEqual((self.base/self.ledger.one('SELECT path FROM file_history')[0]).read_bytes(), b'old')
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows deny-write sharing guard')
+    def test_read_guard_blocks_another_process_and_releases_after_publication(self):
+        path = self.base/'protected.bin'
+        path.write_bytes(b'old')
+        script = "import sys\ntry:\n open(sys.argv[1],'r+b').close()\n print('writable')\nexcept OSError:\n print('blocked')"
+        with layout.PublicationChecks(lambda: False, None) as checks:
+            self.assertEqual(checks.checksum(path), hashlib.sha256(b'old').hexdigest())
+            child = subprocess.run([sys.executable, '-B', '-c', script, str(path)],
+                                   capture_output=True, text=True, timeout=15)
+            self.assertEqual(child.returncode, 0, child.stderr)
+            self.assertEqual(child.stdout.strip(), 'blocked')
+        child = subprocess.run([sys.executable, '-B', '-c', script, str(path)],
+                               capture_output=True, text=True, timeout=15)
+        self.assertEqual(child.returncode, 0, child.stderr)
+        self.assertEqual(child.stdout.strip(), 'writable')
+
+    def test_replaced_file_identity_never_inherits_renamed_hash_proof(self):
+        source, target = self.base/'source.bin', self.base/'target.bin'
+        source.write_bytes(b'old')
+        rename = os.rename
+        def replace_identity(first, second):
+            rename(first, second)
+            Path(second).unlink()
+            Path(second).write_bytes(b'new')
+        with layout.PublicationChecks(lambda: False, None) as checks:
+            self.assertEqual(checks.checksum(source), hashlib.sha256(b'old').hexdigest())
+            with patch('file_layout.os.rename', side_effect=replace_identity):
+                checks.rename(source, target)
+            self.assertEqual(checks.checksum(target), hashlib.sha256(b'new').hexdigest())
+        target.write_bytes(b'bad')
+        with layout.PublicationChecks(lambda: False, None) as checks:
+            self.assertEqual(checks.checksum(target), hashlib.sha256(b'bad').hexdigest())
+
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
@@ -41,6 +128,78 @@ class LayoutTests(unittest.TestCase):
                                    ('p', identifier, identifier, identifier, active))
         return path
 
+    def test_unchanged_batches_skip_global_planning_and_database_writes(self):
+        self.add('one')
+        layout.prepare_downloads(self.ledger, reuse=True)
+        expected = layout.local_update_keys(self.ledger, reuse=True)
+        # Progress is not a catalogue change.
+        with self.ledger.db:
+            self.ledger.db.execute("UPDATE files SET attempts=attempts+1,status='failed',error='temporary'")
+            self.ledger.db.execute("UPDATE documents SET checked_cycle=checked_cycle+1")
+        before = self.ledger.db.total_changes
+        with patch('file_layout.plan', side_effect=AssertionError('replanned unchanged catalogue')), \
+             patch('file_layout.targets', side_effect=AssertionError('rebuilt unchanged mapping')), \
+             patch('file_layout.replacement_links', side_effect=AssertionError('rebuilt unchanged dependencies')):
+            for _ in range(3):
+                self.assertTrue(layout.prepare_downloads(self.ledger, reuse=True))
+                self.assertEqual(layout.local_update_keys(self.ledger, reuse=True), expected)
+        self.assertEqual(self.ledger.db.total_changes, before)
+
+    def test_catalogue_rename_invalidates_cache_and_moves_existing_bytes(self):
+        self.add('one')
+        layout.prepare_downloads(self.ledger, reuse=True)
+        with self.ledger.db:
+            self.ledger.db.execute("UPDATE files SET filename='renamed.pdf' WHERE id='one'")
+        layout.prepare_downloads(self.ledger, reuse=True)
+        row = self.ledger.one('SELECT path FROM files')
+        self.assertTrue(row['path'].endswith('/renamed.pdf'))
+        self.assertEqual((self.base/row['path']).read_bytes(), b'old')
+
+    def test_external_connection_write_invalidates_cache(self):
+        self.add('one')
+        layout.prepare_downloads(self.ledger, reuse=True)
+        with closing(sqlite3.connect(self.db)) as other:
+            other.execute("UPDATE folders SET path='Project/NewFolder'")
+            other.commit()
+        layout.prepare_downloads(self.ledger, reuse=True)
+        self.assertEqual((self.base/self.ledger.one('SELECT path FROM files')['path']).read_bytes(), b'old')
+        self.assertIn('/NewFolder/', self.ledger.one('SELECT path FROM files')['path'])
+
+    def test_migration_marker_overrides_warm_cache(self):
+        self.add('one')
+        layout.prepare_downloads(self.ledger, reuse=True)
+        (self.base/'runtime/layout.pending').write_text('interrupted recovery', encoding='utf-8')
+        with patch('file_layout.apply', wraps=layout.apply) as apply:
+            layout.prepare_downloads(self.ledger, reuse=True)
+        self.assertTrue(apply.called)
+        self.assertFalse((self.base/'runtime/layout.pending').exists())
+
+    def test_new_collision_rebuilds_mapping_without_overwriting_downloaded_file(self):
+        self.add('one', filename='same.pdf')
+        layout.prepare_downloads(self.ledger, reuse=True)
+        self.add('two', filename='same.pdf', data=b'second')
+        layout.prepare_downloads(self.ledger, reuse=True)
+        rows = self.ledger.all('SELECT id,path FROM files')
+        self.assertEqual(len({row['path'].casefold() for row in rows}), 2)
+        self.assertEqual({row['id']: (self.base/row['path']).read_bytes() for row in rows},
+                         {'one': b'old', 'two': b'second'})
+
+    def test_warm_cache_still_publishes_staged_replacement_by_dependency_group(self):
+        old, staged = self.prepare_incremental_fixture()
+        with self.ledger.db:
+            self.ledger.db.execute("UPDATE files SET path=NULL,sha256=NULL,bytes=0,status='pending' WHERE id='one'")
+        layout.prepare_downloads(self.ledger, reuse=True)
+        layout.local_update_keys(self.ledger, reuse=True)
+        with self.ledger.db:
+            self.ledger.db.execute("UPDATE files SET path='runtime/download_ready/new.pdf',sha256=?,bytes=3,status='done' WHERE id='one'",
+                                   (hashlib.sha256(b'new').hexdigest(),))
+        with patch('file_layout.targets', side_effect=AssertionError('rebuilt full mapping')):
+            layout.prepare_downloads(self.ledger, reuse=True)
+        self.assertFalse(staged.exists())
+        self.assertEqual((self.base/self.ledger.one("SELECT path FROM files WHERE id='one'")['path']).read_bytes(), b'new')
+        history = self.ledger.one('SELECT path FROM file_history')['path']
+        self.assertEqual((self.base/history).read_bytes(), b'old')
+
     def test_plain_platform_names_and_read_only_preview(self):
         old = self.add('one')
         before = dict(self.ledger.one('SELECT * FROM files'))
@@ -58,6 +217,49 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual(location['local_filename'], 'ISO-001.pdf')
         self.assertEqual(location['local_directory'], 'downloads/Project/Pipe/Drawings')
         self.assertFalse(old.exists())
+
+    def repeat_completed_publication(self):
+        staged = self.add('one', source='runtime/download_ready/one/content', data=b'new')
+        proposal = layout.plan(self.ledger, untracked=False)
+        self.assertEqual(layout.apply(self.ledger, proposal, log=lambda _: None), 1)
+        target = self.base / self.ledger.one('SELECT path FROM files')['path']
+        # The portable staging address can be reused by a later download or
+        # restored ledger. A prior success does not prove its current publish.
+        target.replace(staged)
+        with self.ledger.db:
+            self.ledger.db.execute('UPDATE files SET path=?', (staged.relative_to(self.base).as_posix(),))
+        repeated = layout.plan(self.ledger, untracked=False)
+        self.assertEqual(repeated['moves'], proposal['moves'])
+        return staged, target, repeated
+
+    def test_completed_journal_does_not_skip_repeated_staged_publication(self):
+        staged, target, proposal = self.repeat_completed_publication()
+        self.assertEqual(layout.apply(self.ledger, proposal, log=lambda _: None), 1)
+        self.assertFalse(staged.exists())
+        self.assertEqual(target.read_bytes(), b'new')
+        self.assertEqual(self.ledger.one('SELECT path FROM files')['path'], target.relative_to(self.base).as_posix())
+        self.assertEqual(self.ledger.one("SELECT COUNT(*) FROM layout_moves WHERE state='done'")[0], 2)
+
+    def test_repeated_publication_rechecks_bytes_despite_completed_journal(self):
+        staged, target, proposal = self.repeat_completed_publication()
+        staged.write_bytes(b'bad')
+        with self.assertRaisesRegex(layout.LayoutError, 'SHA256'):
+            layout.apply(self.ledger, proposal, log=lambda _: None)
+        self.assertEqual(staged.read_bytes(), b'bad')
+        self.assertFalse(target.exists())
+
+    def test_repeated_publication_recovers_its_new_attempt_after_interruption(self):
+        staged, target, proposal = self.repeat_completed_publication()
+        with patch('file_layout.publish', side_effect=OSError('interrupted repeated publication')):
+            with self.assertRaisesRegex(OSError, 'interrupted'):
+                layout.apply(self.ledger, proposal, log=lambda _: None)
+        self.assertEqual(self.ledger.one("SELECT COUNT(*) FROM layout_moves WHERE state='done'")[0], 1)
+        self.assertEqual(self.ledger.one("SELECT COUNT(*) FROM layout_moves WHERE state='staged'")[0], 1)
+        layout.apply(self.ledger, log=lambda _: None)
+        self.assertFalse(staged.exists())
+        self.assertEqual(target.read_bytes(), b'new')
+        self.assertEqual(self.ledger.one("SELECT COUNT(*) FROM layout_moves WHERE state='done'")[0], 2)
+        self.assertEqual(self.ledger.one('SELECT path FROM files')['path'], target.relative_to(self.base).as_posix())
         self.assertTrue(list((self.base/'runtime/backups').glob('*.sqlite3')))
         self.assertEqual(layout.plan(self.ledger)['moves'], [])
 
@@ -133,6 +335,185 @@ class LayoutTests(unittest.TestCase):
                                    (hashlib.sha256(b'new').hexdigest(),))
         return old, staged
 
+    def history_alias(self, *, canonical=True, copies=1):
+        self.add('one')
+        if canonical:
+            layout.prepare_downloads(self.ledger)
+        with self.ledger.db:
+            for _ in range(copies):
+                self.ledger.db.execute('''INSERT INTO file_history(project,file_id,path,bytes,sha256,archived)
+                    SELECT project,id,path,bytes,sha256,'fixture' FROM files WHERE id='one' ''')
+        return self.base/self.ledger.one("SELECT path FROM files WHERE id='one'")['path']
+
+    def test_identical_history_alias_is_copied_without_moving_current_file(self):
+        current = self.history_alias()
+        queue_path = self.base/'runtime/file_analysis/queue.sqlite3'
+        queue_path.parent.mkdir(exist_ok=True)
+        with closing(sqlite3.connect(queue_path)) as queue:
+            queue.execute('CREATE TABLE jobs(path TEXT,origin TEXT)')
+            queue.execute('INSERT INTO jobs VALUES(?,?)', (str(current), str(current)))
+            queue.commit()
+        proposal = layout.plan(self.ledger, untracked=False)
+        self.assertEqual(len(proposal['moves']), 1)
+        self.assertTrue(proposal['moves'][0]['copy'])
+        self.assertEqual(current.read_bytes(), b'old')  # Preview is read-only.
+        layout.prepare_downloads(self.ledger)
+        history = self.base/self.ledger.one('SELECT path FROM file_history')['path']
+        self.assertEqual(current.read_bytes(), b'old')
+        self.assertEqual(history.read_bytes(), b'old')
+        self.assertNotEqual(current, history)
+        with closing(sqlite3.connect(queue_path)) as queue:
+            self.assertEqual(queue.execute('SELECT path,origin FROM jobs').fetchone(),
+                             (str(current), str(current)))
+        history.write_bytes(b'changed history')
+        self.assertEqual(current.read_bytes(), b'old')  # Separate bytes, never a hard link.
+
+    def test_alias_can_be_archived_while_current_path_is_renamed(self):
+        previous = self.history_alias(canonical=False)
+        layout.prepare_downloads(self.ledger)
+        current = self.base/self.ledger.one("SELECT path FROM files WHERE id='one'")['path']
+        history = self.base/self.ledger.one('SELECT path FROM file_history')['path']
+        self.assertEqual(current.read_bytes(), b'old')
+        self.assertEqual(history.read_bytes(), b'old')
+        self.assertFalse(previous.exists())
+
+    def test_multiple_identical_history_aliases_get_independent_archives(self):
+        current = self.history_alias(copies=2)
+        layout.prepare_downloads(self.ledger)
+        histories = [self.base/r['path'] for r in self.ledger.all('SELECT path FROM file_history')]
+        self.assertEqual(len(set(histories)), 2)
+        self.assertTrue(all(p.read_bytes() == b'old' for p in histories))
+        self.assertEqual(current.read_bytes(), b'old')
+
+    def test_history_alias_with_conflicting_identity_is_not_repaired(self):
+        current = self.history_alias()
+        with self.ledger.db:
+            self.ledger.db.execute('UPDATE file_history SET sha256=?', (hashlib.sha256(b'new').hexdigest(),))
+        with self.assertRaisesRegex(layout.LayoutError, '内容身份不一致'):
+            layout.prepare_downloads(self.ledger)
+        self.assertEqual(current.read_bytes(), b'old')
+        self.assertEqual(self.ledger.one('SELECT path FROM file_history')[0],
+                         self.ledger.one('SELECT path FROM files')[0])
+
+    def test_shared_old_versions_archive_before_new_publication(self):
+        old, staged = self.prepare_incremental_fixture()
+        with self.ledger.db:
+            self.ledger.db.execute('''INSERT INTO file_history(project,file_id,fingerprint,path,bytes,sha256,archived)
+                SELECT project,file_id,'another-version',path,bytes,sha256,'fixture-2' FROM file_history''')
+        proposal = layout.plan(self.ledger,untracked=False)
+        archives = [m for m in proposal['moves'] if m['source']==old.relative_to(self.base).as_posix()]
+        self.assertEqual(len(archives),2)
+        self.assertTrue(archives[0]['copy'])
+        self.assertFalse(archives[1].get('copy',False))
+        layout.prepare_downloads(self.ledger)
+        self.assertEqual(old.read_bytes(),b'new')
+        self.assertFalse(staged.exists())
+        histories = self.ledger.all('SELECT * FROM file_history')
+        self.assertEqual(len({r['path'] for r in histories}),2)
+        self.assertTrue(all((self.base/r['path']).read_bytes()==b'old' for r in histories))
+        self.assertEqual(layout.plan(self.ledger,untracked=False)['moves'],[])
+
+    def test_shared_archive_recovers_after_copy_was_staged(self):
+        old, staged = self.prepare_incremental_fixture()
+        with self.ledger.db:
+            self.ledger.db.execute('''INSERT INTO file_history(project,file_id,path,bytes,sha256,archived)
+                SELECT project,file_id,path,bytes,sha256,'fixture-2' FROM file_history''')
+        original = layout.PublicationChecks.rename
+        def interrupt(checks,source,target):
+            original(checks,source,target)
+            if source.name=='history-copy.part':
+                raise KeyboardInterrupt()
+        with patch.object(layout.PublicationChecks,'rename',interrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                layout.prepare_downloads(self.ledger)
+        self.assertEqual(old.read_bytes(),b'old')
+        self.ledger.close()
+        self.ledger = Ledger(self.db,base_dir=self.base)
+        self.addCleanup(self.ledger.close)
+        layout.prepare_downloads(self.ledger)
+        self.assertEqual(old.read_bytes(),b'new')
+        self.assertTrue(all((self.base/r['path']).read_bytes()==b'old'
+                            for r in self.ledger.all('SELECT path FROM file_history')))
+        self.assertFalse((self.base/'runtime/layout.pending').exists())
+
+    def test_conflicting_shared_versions_pass_path_to_automatic_repair(self):
+        old, staged = self.prepare_incremental_fixture()
+        with self.ledger.db:
+            self.ledger.db.execute('''INSERT INTO file_history(project,file_id,path,bytes,sha256,archived)
+                SELECT project,file_id,path,bytes,?,'fixture-2' FROM file_history''',
+                (hashlib.sha256(b'bad').hexdigest(),))
+        with self.assertRaises(layout.LayoutPlanningError) as caught:
+            layout.prepare_downloads(self.ledger)
+        self.assertEqual(caught.exception.paths,(old.relative_to(self.base).as_posix(),))
+        self.assertEqual(old.read_bytes(),b'old')
+        self.assertEqual(staged.read_bytes(),b'new')
+        self.assertFalse((self.base/'runtime/layout.pending').exists())
+
+    def test_current_aliases_can_publish_to_distinct_destinations(self):
+        source = self.add('one')
+        self.add('two',filename='second.pdf',source=source.relative_to(self.base).as_posix())
+        layout.prepare_downloads(self.ledger)
+        paths = [self.base/r['path'] for r in self.ledger.all('SELECT path FROM files')]
+        self.assertEqual(len(set(paths)),2)
+        self.assertTrue(all(p.read_bytes()==b'old' for p in paths))
+        paths[0].write_bytes(b'changed')
+        self.assertEqual(paths[1].read_bytes(),b'old')
+
+    def test_stationary_alias_keeps_bytes_when_other_owner_moves(self):
+        self.add('one')
+        layout.prepare_downloads(self.ledger)
+        source = self.base/self.ledger.one("SELECT path FROM files WHERE id='one'")[0]
+        self.add('two',filename='second.pdf',source=source.relative_to(self.base).as_posix())
+        layout.prepare_downloads(self.ledger)
+        self.assertEqual(source.read_bytes(),b'old')
+        other = self.base/self.ledger.one("SELECT path FROM files WHERE id='two'")[0]
+        self.assertEqual(other.read_bytes(),b'old')
+        other.write_bytes(b'changed')
+        self.assertEqual(source.read_bytes(),b'old')
+
+    def test_missing_history_path_clears_before_staged_new_version_reuses_it(self):
+        old, staged = self.prepare_incremental_fixture()
+        old.unlink()
+        before = dict(self.ledger.one('SELECT * FROM file_history'))
+        keys = self.ledger._publication_groups[('p','one')]
+        layout.prepare_downloads(self.ledger, keys=keys)
+        current = self.ledger.one("SELECT * FROM files WHERE id='one'")
+        history = self.ledger.one('SELECT * FROM file_history')
+        self.assertEqual((self.base/current['path']).read_bytes(), b'new')
+        self.assertIsNone(history['path'])
+        self.assertEqual(history['sha256'], before['sha256'])
+        self.assertEqual(history['fingerprint'], before['fingerprint'])
+        self.assertEqual(layout.plan(self.ledger)['moves'], [])
+
+    def test_actual_content_must_match_before_alias_copy_is_published(self):
+        current = self.history_alias()
+        current.write_bytes(b'bad')
+        with self.assertRaisesRegex(layout.LayoutError, 'SHA256'):
+            layout.prepare_downloads(self.ledger)
+        self.assertEqual(current.read_bytes(), b'bad')
+        self.assertEqual(self.ledger.one('SELECT path FROM file_history')[0],
+                         self.ledger.one('SELECT path FROM files')[0])
+
+    def test_history_copy_recovers_after_publication_before_reference_commit(self):
+        current = self.history_alias()
+        original = layout.publish
+
+        def interrupt(*args):
+            original(*args)
+            raise KeyboardInterrupt()
+
+        with patch('file_layout.publish', side_effect=interrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                layout.prepare_downloads(self.ledger)
+        self.assertEqual(current.read_bytes(), b'old')
+        self.ledger.close()
+        self.ledger = Ledger(self.db, base_dir=self.base)
+        self.addCleanup(self.ledger.close)
+        layout.prepare_downloads(self.ledger)
+        self.assertEqual(current.read_bytes(), b'old')
+        self.assertEqual((self.base/self.ledger.one('SELECT path FROM file_history')[0]).read_bytes(), b'old')
+        self.assertFalse((self.base/'runtime/layout.pending').exists())
+
     def test_incremental_publication_skips_global_maintenance_and_preserves_versions(self):
         old, staged = self.prepare_incremental_fixture()
         before = dict(self.ledger.one("SELECT * FROM files WHERE id='unrelated'"))
@@ -180,6 +561,31 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual((self.base/self.ledger.one("SELECT path FROM files WHERE id='one'")['path']).read_bytes(), b'new')
         self.assertEqual((self.base/self.ledger.one('SELECT path FROM file_history')['path']).read_bytes(), b'old')
         self.assertFalse((self.base/'runtime/layout.pending').exists())
+
+    def test_nonblocking_publication_defers_sharing_violation_and_recovers(self):
+        old, staged = self.prepare_incremental_fixture()
+        keys = self.ledger._publication_groups[('p', 'one')]
+        busy = PermissionError('fixture sharing violation')
+        busy.winerror = 32
+        with patch('file_layout.os.rename', side_effect=busy):
+            self.assertFalse(layout.prepare_downloads(self.ledger, keys=keys, wait=False))
+        self.assertEqual(old.read_bytes(), b'old')
+        self.assertEqual(staged.read_bytes(), b'new')
+        self.assertTrue((self.base/'runtime/layout.pending').exists())
+        self.assertGreater(self.ledger.one("SELECT COUNT(*) FROM layout_moves WHERE state!='done'")[0], 0)
+        self.assertTrue(layout.prepare_downloads(self.ledger, keys=keys, wait=False))
+        self.assertEqual((self.base/self.ledger.one("SELECT path FROM files WHERE id='one'")['path']).read_bytes(), b'new')
+        self.assertEqual((self.base/self.ledger.one('SELECT path FROM file_history')['path']).read_bytes(), b'old')
+        self.assertFalse((self.base/'runtime/layout.pending').exists())
+
+    def test_nonblocking_publication_does_not_hide_non_sharing_errors(self):
+        old, staged = self.prepare_incremental_fixture()
+        keys = self.ledger._publication_groups[('p', 'one')]
+        with patch('file_layout.os.rename', side_effect=PermissionError('fixture denied')):
+            with self.assertRaises(PermissionError):
+                layout.prepare_downloads(self.ledger, keys=keys, wait=False)
+        self.assertEqual(old.read_bytes(), b'old')
+        self.assertEqual(staged.read_bytes(), b'new')
 
     def test_incremental_checksum_failure_keeps_bytes_and_journal(self):
         old, staged = self.prepare_incremental_fixture()

@@ -2,7 +2,7 @@
 import subprocess
 import sys
 
-from app_paths import HOME
+from paths import HOME
 from runtime_logging import BoundedLog
 
 

@@ -17,6 +17,20 @@ class MaintenanceTests(unittest.TestCase):
     setUp = fixture.HistoryRepairTests.setUp
     add = fixture.HistoryRepairTests.add
 
+    def test_existing_batch_and_new_auto_archive_reserve_distinct_shared_names(self):
+        source=self.add(data=b'historical')
+        new=self.base/'downloads/Project/Drawings/drawing__rev_A__id.pdf'
+        new.write_bytes(b'untracked')
+        result=maintenance.apply(self.ledger)
+        archives=[m for m in result['moves'] if m['target'].startswith('history/')]
+        self.assertEqual(len(archives),2)
+        self.assertEqual(len({m['target'].casefold() for m in archives}),2)
+        self.assertTrue(all(m['target'].startswith('history/Project/Drawings/') for m in archives))
+        self.assertEqual({(self.base/m['target']).read_bytes() for m in archives},{b'historical',b'untracked'})
+        self.assertFalse((self.base/source).exists())
+        self.assertFalse(new.exists())
+        self.assertEqual(maintenance.plan(self.ledger)['moves'],[])
+
     def pending(self):
         self.current.unlink()
         with self.ledger.db:

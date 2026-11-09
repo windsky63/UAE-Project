@@ -2,11 +2,12 @@ import json
 from datetime import datetime
 from pathlib import Path
 import tempfile
+import requests
 import unittest
 import xml.etree.ElementTree as ET
 from unittest.mock import Mock, patch
 
-from fusion_client import FusionClient, LOCAL, LogoutError, WindowClosed, check_window
+from fusion_client import FusionClient, LOCAL, LogoutError, WindowClosed, check_window, AuthenticationRequiredError
 from ledger import Ledger, safe_name
 from sync import download, file_target, refresh_associations
 
@@ -47,9 +48,9 @@ class SessionTests(unittest.TestCase):
 
     def test_beijing_time_boundaries(self):
         with tempfile.TemporaryDirectory() as d, patch('fusion_client.RUNTIME', Path(d)):
-            for hour, minute in [(1, 0), (10, 29)]:
+            for hour, minute in [(2, 0), (10, 29)]:
                 check_window(datetime(2026, 10, 20, hour, minute, tzinfo=LOCAL))
-            for hour, minute in [(0, 59), (10, 30), (11, 0)]:
+            for hour, minute in [(1, 0), (1, 59), (10, 30), (11, 0)]:
                 with self.assertRaises(WindowClosed):
                     check_window(datetime(2026, 10, 20, hour, minute, tzinfo=LOCAL))
             check_window(datetime(2026, 10, 20, 10, 44, tzinfo=LOCAL), stop_minute=645)
@@ -108,6 +109,105 @@ class SessionTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 client.folders('1')
         client.http.close()
+
+    def test_business_failure_reports_safe_response_evidence(self):
+        client = FusionClient('test', '')
+        self.addCleanup(client.http.close)
+        response = Mock(status_code=200, content=(
+            b'<success isActionSucessful="false"><errorCode>CONTENT_DENIED</errorCode>'
+            b'<message>private-token-and-cookie</message></success>'))
+        with patch.object(client, 'request', return_value=response):
+            with self.assertRaises(RuntimeError) as error:
+                client.related('fixture-version')
+        self.assertIn('HTTP=200', str(error.exception))
+        self.assertIn('errorCode=CONTENT_DENIED', str(error.exception))
+        self.assertIn('响应摘要=', str(error.exception))
+        self.assertNotIn('private-token', str(error.exception))
+
+    def test_scheduled_network_logout_recovers_same_session_without_login_pause(self):
+        client = FusionClient('test', '')
+        client.auth_attempted = True
+        client.http.cookies.set('session', 'fixture-cookie')
+        errors = [requests.exceptions.SSLError('UNEXPECTED_EOF_WHILE_READING') for _ in range(3)]
+        logout = Mock(status_code=200)
+        denied = Mock(status_code=401)
+        cookies = []
+        responses = iter([*errors, logout, denied])
+        def raw(*args, **kwargs):
+            cookies.append(client.http.cookies.get('session'))
+            value = next(responses)
+            if isinstance(value, Exception):
+                raise value
+            return value
+        at = datetime(2026, 11, 7, 9, tzinfo=LOCAL)
+        with tempfile.TemporaryDirectory() as folder, patch('fusion_client.RUNTIME', Path(folder)), \
+                patch('fusion_client.now', return_value=at), \
+                patch.dict('os.environ', {'FUSIONLIVE_SCHEDULED': '1'}), \
+                patch('fusion_client.time.sleep') as sleep, patch.object(client, 'raw', side_effect=raw), \
+                patch.object(client, 'login') as login:
+            client.logout()
+            self.assertFalse((Path(folder) / 'login.paused').exists())
+            result = json.loads((Path(folder) / 'last_logout.json').read_text(encoding='utf-8'))
+        self.assertTrue(result['confirmed'])
+        self.assertFalse(result['recovery_pending'])
+        self.assertEqual(result['attempts'], 4)
+        self.assertEqual(cookies, ['fixture-cookie'] * 5)
+        self.assertEqual(sleep.call_count, 62)
+        login.assert_not_called()
+        self.assertEqual(len(client.http.cookies), 0)
+
+    def test_network_logout_wait_obeys_window_manual_stop_and_pause_markers(self):
+        for stop in ('stop.request', 'scheduler.exit.request', 'login.paused', 'window_end'):
+            with self.subTest(stop=stop), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                client = FusionClient('test', '')
+                client.auth_attempted = True
+                at = [datetime(2026, 11, 7, 9, tzinfo=LOCAL)]
+                sleeps = []
+                def sleep(seconds):
+                    sleeps.append(seconds)
+                    if len(sleeps) == 3:
+                        if stop == 'window_end':
+                            at[0] = at[0].replace(hour=10, minute=30)
+                        else:
+                            (root / stop).write_text('manual', encoding='utf-8')
+                with patch('fusion_client.RUNTIME', root), patch('fusion_client.now', side_effect=lambda: at[0]), \
+                        patch.dict('os.environ', {'FUSIONLIVE_SCHEDULED': '1'}), \
+                        patch('fusion_client.time.sleep', side_effect=sleep), \
+                        patch.object(client, 'raw', side_effect=requests.ReadTimeout) as raw:
+                    with self.assertRaises(LogoutError):
+                        client.logout()
+                self.assertEqual(raw.call_count, 3)
+                self.assertEqual(len(sleeps), 3)
+                self.assertFalse(client.logout_result['confirmed'])
+                self.assertFalse(client.logout_result['recovery_pending'])
+
+    def test_certificate_and_accessible_old_session_never_enter_automatic_recovery(self):
+        for error in ('certificate', 'still_accessible'):
+            with self.subTest(error=error), tempfile.TemporaryDirectory() as folder:
+                client = FusionClient('test', '')
+                client.auth_attempted = True
+                response = Mock(status_code=200, text='<tree/>')
+                effect = requests.exceptions.SSLError('CERTIFICATE_VERIFY_FAILED') if error == 'certificate' else None
+                with patch('fusion_client.RUNTIME', Path(folder)), \
+                        patch('fusion_client.now', return_value=datetime(2026, 11, 7, 9, tzinfo=LOCAL)), \
+                        patch.dict('os.environ', {'FUSIONLIVE_SCHEDULED': '1'}), \
+                        patch('fusion_client.time.sleep') as sleep, \
+                        patch.object(client, 'raw', side_effect=effect, return_value=response):
+                    with self.assertRaises(LogoutError):
+                        client.logout()
+                self.assertEqual(sleep.call_count, 2)
+                self.assertFalse(client.logout_result['recovery_pending'])
+
+    def test_authentication_error_survives_failed_logout_for_manual_pause(self):
+        client = FusionClient('test', '')
+        self.addCleanup(client.http.close)
+        with patch.object(client, 'login', side_effect=AuthenticationRequiredError('MFA required')), \
+                patch.object(client, 'logout', side_effect=LogoutError('cleanup failed')):
+            with self.assertRaises(AuthenticationRequiredError):
+                with client:
+                    pass
+        self.assertFalse(client.logout_recovery_allowed)
 
     def test_related_count_mismatch_is_not_accepted_as_complete(self):
         client = FusionClient('test', '')

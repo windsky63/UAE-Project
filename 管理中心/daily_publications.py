@@ -5,8 +5,32 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
+import importlib.util
 
 BEIJING = timezone(timedelta(hours=8))
+
+_source = Path(__file__).resolve().parents[1]/'FusionLive同步工具/app/file_inventory.py'
+_spec = importlib.util.spec_from_file_location('shared_project_file_inventory',_source)
+_inventory = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_inventory)
+
+
+def version_progress(database):
+    """Read the latest generated snapshot; never scan directories or open SQL."""
+    database = Path(database)
+    try:
+        base = database.parent.parent if database.parent.name=='runtime' else database.parent
+        snapshot=_inventory.read_daily_snapshot(base)
+        return {**snapshot['file_inventory'],'snapshot_date':snapshot['date'],
+                'generated_at':snapshot['generated_at'],'snapshot_ready':snapshot['ready']}
+    except (OSError,ValueError,KeyError,TypeError):
+        return None
+
+
+def live_text(base, *, require_ready=False):
+    day=datetime.now(BEIJING).date().isoformat()
+    data=_inventory.read_daily_snapshot(base,day,require_ready=require_ready)
+    return data['text'],data
 
 
 def day_value(value=''):
@@ -49,18 +73,16 @@ def validate_marker(marker, day):
 
 
 def load_text(base, day):
+    if day==day_value():
+        text,marker=live_text(base)
+        return marker,None,text
     folder = Path(base) / 'logs' / day
-    marker = read_marker(folder / '推送状态.json', folder)
-    validate_marker(marker, day)
-    if marker.get('text_file') != '微信推送文.txt':
-        raise ValueError('推送文标记中的文件名无效')
-    path = safe_file(folder / '微信推送文.txt', folder)
-    if path.stat().st_size > 64000:
-        raise ValueError('推送文文件过大')
-    content = path.read_bytes()
-    if hashlib.sha256(content).hexdigest() != marker.get('text_sha256'):
-        raise ValueError('推送文校验失败，可能正在生成')
-    text = content.decode('utf-8-sig').strip()
+    path=folder/'管道简报/文字发送备份.json'
+    marker=read_marker(path,folder)
+    validate_marker(marker,day)
+    text=marker['text']
+    if hashlib.sha256(text.encode('utf-8')).hexdigest()!=marker.get('sha256'):
+        raise ValueError('文字发送备份校验失败')
     if not text or len(text) > 14000:
         raise ValueError('推送文为空或超过单条消息长度')
     return marker, path, text
@@ -197,8 +219,8 @@ def prepare_manual(base, day, kind, settings):
                 generated_at=datetime.now(BEIJING).isoformat(), images=[])
     marker = dict(marker)
     if needs_text:
-        text_marker, _, text = load_text(base, day)
+        text,text_marker=live_text(base,require_ready=True)
         if not text_marker.get('ready'):
             raise ValueError('下载日报尚未就绪，未推送')
-        marker.update(wechat_push_text=text, wechat_text_format='daily-only-v1')
+        marker.update(live_text=True)
     return marker, selected_settings(settings, kind)

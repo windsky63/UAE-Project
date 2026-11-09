@@ -345,7 +345,7 @@ class CodexChatTests(unittest.TestCase):
         self.chat.event(identity,'status',dict(status='completed'))
         after=self.chat.events(identity)[0]['seq']
         server=ThreadingHTTPServer(('127.0.0.1',0),handler(self.manager,'test-token'))
-        thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+        thread=threading.Thread(target=server.serve_forever,kwargs={'poll_interval':.01},daemon=True);thread.start()
         try:
             request=Request(f'http://127.0.0.1:{server.server_port}/api/codex/events?id={identity}&after={after}',
                             headers={'Cookie':'project_session=test-token'})

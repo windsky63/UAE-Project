@@ -1,5 +1,5 @@
 """Merge historical batch directories without moving or rewriting current files."""
-from app_paths import HOME
+from paths import HOME
 from contextlib import closing, ExitStack
 from pathlib import Path, PurePosixPath
 import argparse
@@ -25,8 +25,14 @@ def guard(ledger):
             raise LayoutError('原目录迁移仍有未完成文件，请先完成原迁移。')
 
 
-def plan(ledger, progress=None, *, extra_sources=None, exclude=()):
-    guard(ledger)
+def plan(ledger, progress=None, *, extra_sources=None, exclude=(), scan_existing=True, reserve_paths=()):
+    """Share destinations for maintenance and projected automatic archives.
+
+    Projected planning only reads the supplied sources, including while a layout
+    journal is being prepared. It never scans or resumes existing history jobs.
+    """
+    if scan_existing:
+        guard(ledger)
     base = ledger.base_dir
     extra_sources = extra_sources or {}
     excluded = {p.casefold() for p in exclude}
@@ -41,17 +47,31 @@ def plan(ledger, progress=None, *, extra_sources=None, exclude=()):
             key = str(PurePosixPath(row['local_path']).parent)
             parents.setdefault(key, set()).add(str(PurePosixPath(row['platform_path']).parent))
     references = {}
-    for row in ledger.all('SELECT path,bytes,sha256 FROM file_history WHERE path IS NOT NULL'):
+    def source_rows(table, columns):
+        if scan_existing:
+            return ledger.all(f'SELECT {columns} FROM {table} WHERE path IS NOT NULL')
+        # Batch predicates: older ledgers may not have a path index. Do not
+        # rescan a large history table separately for every archived file.
+        paths = sorted(set(extra_sources.values()))
+        rows = []
+        for offset in range(0,len(paths),400):
+            chunk = paths[offset:offset+400]
+            rows.extend(ledger.all(f'SELECT {columns} FROM {table} WHERE path IN ('+
+                                   ','.join('?' for _ in chunk)+')',tuple(chunk)))
+        return rows
+    history_rows = source_rows('file_history','path,bytes,sha256')
+    file_rows = source_rows('files','path,bytes,sha256,active')
+    for row in history_rows:
         references.setdefault(row['path'], []).append(dict(row))
-    for row in ledger.all('SELECT path,bytes,sha256,active FROM files WHERE path IS NOT NULL'):
+    for row in file_rows:
         if row['active'] and row['path'].startswith('history/') and row['path'].casefold() not in excluded:
             raise LayoutError('当前有效文件引用了history，需先核对：'+row['path'])
         if not row['active']:
             references.setdefault(row['path'], []).append(dict(row))
     sources = []
-    if progress:
+    if progress and scan_existing:
         progress.phase('扫描历史批次目录')
-    for parent, dirs, names in os.walk(base/'history', followlinks=False):
+    for parent, dirs, names in (os.walk(base/'history', followlinks=False) if scan_existing else ()):
         for name in [*dirs, *names]:
             relative = (Path(parent)/name).relative_to(base).as_posix()
             confined(base, relative)
@@ -61,7 +81,7 @@ def plan(ledger, progress=None, *, extra_sources=None, exclude=()):
             if len(parts) >= 4 and BATCH.match(parts[1]) and relative.casefold() not in excluded:
                 sources.append(relative)
     sources.extend(source for source in extra_sources if source.casefold() not in excluded)
-    reserved, moves, parent_owners = set(), [], {}
+    reserved, moves, parent_owners = {p.casefold() for p in reserve_paths}, [], {}
     entries, longest = [], {}
     for source in sorted(sources):
         if progress:
@@ -73,7 +93,7 @@ def plan(ledger, progress=None, *, extra_sources=None, exclude=()):
         folder_id = None
         if len(original) == 3 and original[0].casefold() in ('_long_paths', 'longpath', 'longpaths'):
             folder_id = original[1]
-        elif match := re.search(r'__(\d+)$', original[-2]):
+        elif len(original) >= 2 and (match := re.search(r'__(\d+)$', original[-2])):
             folder_id = match[1]
         matches = by_id.get(folder_id, set())
         mapped = matches or parents.get('downloads/'+parent, set())

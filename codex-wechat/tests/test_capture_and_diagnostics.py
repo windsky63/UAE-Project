@@ -14,6 +14,44 @@ from wechat_local.wechat_capture import LocalDatabaseDriver
 from wechat_local.wechat_db.reader import WeChatDB
 
 
+def test_diagnostic_formatter_has_beijing_time_and_redacts_full_credentials():
+    import logging
+    from wechat_local.operational_logging import DiagnosticFormatter
+    record=logging.LogRecord('wechat_local.test',logging.ERROR,__file__,1,
+        'password=private-password authorization=Bearer private-token "api_key": "private-key"',(),None)
+    record.created=0
+    text=DiagnosticFormatter('[%(asctime)s] [%(levelname)s] %(name)s: %(message)s').format(record)
+    assert '1970-01-01T08:00:00.000+08:00' in text
+    assert 'private-password' not in text and 'private-token' not in text and 'private-key' not in text
+    assert '[ERROR]' in text and '[REDACTED]' in text
+
+
+@pytest.mark.parametrize('persisted', [False, True])
+def test_first_capture_after_restart_preserves_fresh_messages_only_with_saved_baseline(tmp_path, persisted):
+    class Reader:
+        account_id, account_name = 'bot-id', 'bot'
+        rows = []
+        def contacts(self, name):
+            return [dict(username='123@chatroom', nick_name='test', remark='')]
+        def read(self, *args):
+            return self.rows, {'message_0': len(self.rows)}
+    config = LocalConfig(database_cache=str(tmp_path/'cache'),
+                         chats=[WechatChat(id='test', name='test', kind='group', reply=True)])
+    reader = Reader()
+    spool = DesktopSpool(str(tmp_path/'spool.db'))
+    try:
+        if persisted:
+            LocalDatabaseDriver(config, reader=reader).capture('test', spool)
+        restarted = LocalDatabaseDriver(config, reader=reader)
+        reader.rows = [dict(local_id=index, shard='message_0', sender_username='alice',
+                            type='文本', content='@bot hello', create_time=restarted.started+offset)
+                       for index, offset in ((1,-1),(2,1))]
+        restarted.capture('test', spool)
+        assert [row['historical'] for row in spool.pending()] == [True, not persisted]
+    finally:
+        spool.db.close()
+
+
 @pytest.mark.parametrize('native_type,expected,calls', [
     (1, 'text', 1), (3, 'image', 0), (34, 'voice', 0),
     (49, 'file', 0), (10000, 'other', 0),

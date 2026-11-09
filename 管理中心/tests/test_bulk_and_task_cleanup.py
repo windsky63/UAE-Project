@@ -65,10 +65,10 @@ class BulkAndCleanupTests(unittest.TestCase):
 
     def test_start_skips_running_tool_and_continues_after_one_failure(self):
         with patch.object(self.manager, 'live', side_effect=lambda t: 'external' if t == 'sync' else 'stopped'), \
-             patch.object(self.manager, 'action', side_effect=[OSError('fixture failure'), {'id': 'wechat-task'}]) as action:
+             patch.object(self.manager, 'action', side_effect=[OSError('fixture failure'), {'id': 'wechat-task'}, {'id': 'ima-task'}]) as action:
             result = self.manager.bulk_action('start')
-        self.assertEqual([i['state'] for i in result['items']], ['skipped', 'failed', 'submitted'])
-        self.assertEqual([call.args for call in action.call_args_list], [('nas', 'start'), ('wechat', 'start')])
+        self.assertEqual([i['state'] for i in result['items']], ['skipped', 'failed', 'submitted', 'submitted'])
+        self.assertEqual([call.args for call in action.call_args_list], [('nas', 'start'), ('wechat', 'start'), ('ima', 'start')])
 
     def test_stop_submits_to_all_tools_even_without_main_scheduler(self):
         with patch.object(self.manager, 'action', return_value={'id': 'stop'}) as action:
@@ -82,7 +82,24 @@ class BulkAndCleanupTests(unittest.TestCase):
             self.assertEqual(self.manager.bulk_action('start')['items'][0]['state'], 'skipped')
             with self.assertRaises(ValueError):
                 self.manager.bulk_action('check')
-        self.assertEqual(action.call_count, 2)
+        self.assertEqual(action.call_count, 3)
+
+    def test_selected_tools_only_and_duplicate_selection_runs_once(self):
+        for operation in ('start', 'stop'):
+            with self.subTest(operation=operation), \
+                 patch.object(self.manager, 'live', return_value='stopped'), \
+                 patch.object(self.manager, 'action', return_value={'id': 'selected'}) as action:
+                result = self.manager.bulk_action(operation, ['ima', 'nas', 'ima'])
+                self.assertEqual([item['tool'] for item in result['items']], ['ima', 'nas'])
+                self.assertEqual([call.args for call in action.call_args_list],
+                                 [('ima', operation), ('nas', operation)])
+
+    def test_invalid_selection_rejected_before_any_action(self):
+        with patch.object(self.manager, 'action') as action:
+            for selection in ([], 'sync', {}, ['sync', 'unknown'], ['sync', None], [['sync']]):
+                with self.subTest(selection=selection), self.assertRaises(ValueError):
+                    self.manager.bulk_action('start', selection)
+            action.assert_not_called()
 
 
 if __name__ == '__main__':

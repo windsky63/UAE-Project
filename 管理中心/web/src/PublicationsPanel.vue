@@ -4,8 +4,7 @@ const props=defineProps({api:{type:Function,required:true}})
 const emit=defineEmits(['notice'])
 const data=ref(null), day=ref(''), loading=ref(false), failure=ref('')
 const dialog=ref(false), sending=ref(false), sendError=ref(''), kind=ref('all'), task=ref('')
-const generating=ref(false), generationTask=ref('')
-let timer, request=0
+let request=0
 const names={pending:'未发送',submitted:'已提交微信',not_sent:'发送失败／未发送',uncertain:'发送结果待核对',unknown:'发送状态读取失败',previous_or_partial:'已提交部分内容或旧版本'}
 const phases={waiting:'等待准备',preparing:'正在生成',waiting_analysis:'等待分析',prepared:'已准备',sending:'正在推送',submitted:'已提交微信',uncertain:'待人工核对',skipped:'已跳过',disabled:'自动发布已关闭',not_sent:'未发送'}
 const receivers=computed(()=>(data.value?.targets||[]).map(t=>({...t,text:t.text&&kind.value!=='briefing',briefing:t.briefing&&kind.value!=='text'})).filter(t=>t.text||t.briefing))
@@ -24,17 +23,6 @@ async function load(){
   finally{if(current===request)loading.value=false}
 }
 function openSend(value){kind.value=value;sendError.value='';dialog.value=true}
-async function generateText(){
-  if(generating.value||!data.value||data.value.date!==data.value.today)return
-  generating.value=true
-  try{
-    const result=await props.api('/action',{method:'POST',body:JSON.stringify({tool:'sync',action:'generate-text'})})
-    generationTask.value=result.id
-    emit('notice','生成推送文任务已提交，内容会自动刷新；也可在同步工具操作记录中查看结果。')
-    await load()
-  }catch(error){emit('notice',error.message,true)}
-  finally{generating.value=false}
-}
 async function send(){
   if(sending.value||!canSend.value)return
   sending.value=true;sendError.value=''
@@ -47,15 +35,15 @@ async function send(){
   finally{sending.value=false}
 }
 watch(day,load)
-onMounted(()=>{load();timer=setInterval(()=>{if(!document.hidden&&!loading.value&&!dialog.value)load()},5000)})
-onUnmounted(()=>{request++;clearInterval(timer)})
+onMounted(load)
+onUnmounted(()=>{request++})
 </script>
 
 <template>
   <div data-testid="publications-panel">
     <v-card class="mb-5 pa-5">
       <div class="d-flex align-center flex-wrap ga-3">
-        <div class="flex-grow-1"><h2>每日推送与管道简报</h2><p class="section-subtitle">按北京时间查看文件与实际投递记录，每5秒刷新状态。</p></div>
+        <div class="flex-grow-1"><h2>每日推送与管道简报</h2><p class="section-subtitle">文字读取定时生成的日报快照；点击刷新读取最新结果。</p></div>
         <v-text-field v-model="day" type="date" :max="data?.today" label="查看日期（留空为今天）" hide-details style="max-width:250px" :disabled="sending||dialog"/>
         <v-btn variant="text" :loading="loading" @click="load">刷新</v-btn>
         <v-btn color="primary" prepend-icon="mdi-send-outline" :disabled="!data||data.date!==data.today||sending||!!failure" @click="openSend('all')">手动推送</v-btn>
@@ -63,6 +51,7 @@ onUnmounted(()=>{request++;clearInterval(timer)})
       <v-alert v-if="failure" type="error" variant="tonal" class="mt-4">{{failure}}</v-alert>
       <template v-if="data">
         <p class="text-body-2 mt-4">所选日期：{{data.date}} · 自动调度：{{phases[data.schedule.phase]||data.schedule.phase||'暂无记录'}}<span v-if="data.schedule.reason">；{{data.schedule.reason}}</span></p>
+        <p v-if="data.schedule.text_publication" class="text-body-2 mt-2">推送文：{{data.schedule.text_publication.scheduled_send_time||'—'}} · {{phases[data.schedule.text_publication.phase]||data.schedule.text_publication.phase}}；管道简报：{{data.schedule.scheduled_send_time||'—'}} · {{phases[data.schedule.phase]||data.schedule.phase}}</p>
         <p class="text-caption text-secondary mt-2">“已提交微信”表示客户端发送动作已完成，不代表接收人已收到。结果不确定的记录需在微信中核对。</p>
         <v-alert v-for="error in data.errors" :key="error" type="warning" variant="tonal" class="mt-3">{{error}}</v-alert>
         <v-alert v-if="task" type="info" variant="tonal" class="mt-3">手动推送任务编号：{{task}}。请等待下方投递状态更新。</v-alert>
@@ -74,14 +63,13 @@ onUnmounted(()=>{request++;clearInterval(timer)})
         <v-col cols="12" lg="6">
           <v-card class="pa-5 h-100">
             <div class="d-flex align-center flex-wrap ga-3"><h2 class="flex-grow-1">每日推送文</h2><v-chip :color="color(data.text.delivery_state)" size="small">{{names[data.text.delivery_state]}}</v-chip></div>
-            <p class="text-caption text-secondary mt-3">生成时间：{{stamp(data.text.generated_at)}} · {{data.text.ready?'已就绪':'尚未就绪'}}</p>
+            <p class="text-caption text-secondary mt-3">快照时间：{{stamp(data.text.generated_at)}} · {{data.text.ready?'已就绪':'尚未就绪'}}；发送使用这份快照并留存备份。</p>
             <v-alert v-if="data.text.reason" type="info" variant="tonal" class="my-3">{{data.text.reason}}</v-alert>
             <pre v-if="data.text.text" class="publication-text mt-4">{{data.text.text}}</pre>
             <div class="d-flex flex-wrap ga-3 mt-4">
-              <v-btn color="primary" variant="outlined" prepend-icon="mdi-file-document-edit-outline" :loading="generating" :disabled="data.date!==data.today||sending||generating||!!failure" @click="generateText">生成推送文</v-btn>
+              <v-btn color="primary" variant="outlined" prepend-icon="mdi-refresh" :loading="loading" :disabled="sending||!!failure" @click="load">刷新预览</v-btn>
               <v-btn variant="outlined" :disabled="data.date!==data.today||!data.text.ready||sending||!!failure" @click="openSend('text')">仅推送文</v-btn>
             </div>
-            <p v-if="generationTask" class="text-caption text-secondary mt-3">生成任务编号：{{generationTask}}；本页会自动刷新生成结果。</p>
           </v-card>
         </v-col>
         <v-col cols="12" lg="6">

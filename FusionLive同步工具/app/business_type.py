@@ -164,8 +164,8 @@ def classify(*, filename='', reference='', path='', parent_references=()):
     return result
 
 
-def ledger_file_contexts(db):
-    """Active associations only; preserve multiple parents for conflict detection."""
+def ledger_file_contexts(db, *, include_inactive=False):
+    """Preserve multiple parents; local collection can include previous versions."""
     def records(sql):
         cursor = db.execute(sql)
         columns = [column[0] for column in cursor.description]
@@ -174,19 +174,19 @@ def ledger_file_contexts(db):
     if 'documents' not in tables:
         return {}
     documents = records('SELECT * FROM documents')
-    documents = [r for r in documents if r.get('active', 1)]
+    documents = [r for r in documents if include_inactive or r.get('active', 1)]
     folders = {(r['project'], r['id']): r for r in records('SELECT * FROM folders')} if 'folders' in tables else {}
     indexed = {}
     for row in documents:
         folder = folders.get((row['project'], row.get('folder_id')), {})
-        if folder.get('active', 1):
+        if include_inactive or folder.get('active', 1):
             indexed[row['project'], row['id'], row.get('folder_id')] = dict(row, folder_path=folder.get('path', ''))
     links = records('SELECT * FROM document_files') if 'document_files' in tables else [
         dict(project=r['project'], file_id=r['id'], document_id=r.get('document_id'), folder_id=r.get('folder_id'))
         for r in records('SELECT * FROM files')]
     contexts = {}
     for row in links:
-        if not row.get('active', 1):
+        if not include_inactive and not row.get('active', 1):
             continue
         parent = indexed.get((row['project'], row.get('document_id'), row.get('folder_id')))
         if parent:

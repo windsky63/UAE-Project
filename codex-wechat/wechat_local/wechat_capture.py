@@ -12,6 +12,7 @@ import time
 from datetime import datetime, timezone
 
 from wechat_local.delivery import DeliveryNotSent
+from wechat_local.message_content import normalize
 
 def load_backend():
     return importlib.import_module("wechat_local.wechat_db.reader")
@@ -169,23 +170,25 @@ class LocalDatabaseDriver:
         source = hashlib.sha256(json.dumps([self.config.bot_id, self.account_id, chat_id, target]).encode()).hexdigest()
         cursors = spool.database_cursor(source)
         rows, updated = self.reader.read(target, cursors, self.config.initial_history)
-        first = source not in self.seen_sources
         events = []
         for row in rows:
             native = row.get('sender_username') or ''
             timestamp = float(row.get('create_time') or 0)
             # The bundled reader returns display labels, while older readers used
             # native numeric codes. Normalize both at the integration boundary.
-            content_type = {1:'text', 3:'image', 34:'voice', 49:'file',
-                            '文本':'text', '图片':'image', '语音':'voice',
-                            '文件/链接/卡片':'file'}.get(row.get('type'), 'other')
+            content_type, text, quoted = normalize(row.get('type'), row.get('content'))
             direction = 'outgoing' if native == self.account_id else 'incoming' if native else 'system'
             identifier = hashlib.sha256(json.dumps([source, row['shard'], row['local_id']]).encode()).hexdigest()
             events.append({'id':identifier, 'chat_id':chat_id, 'sender':native or 'unknown',
                            'sender_id':native, 'direction':direction, 'content_type':content_type,
-                           'text':str(row.get('content') or '')[:16000],
-                           'historical':first or cursors is None or timestamp <= self.started,
+                           'text':text,
+                           # Persisted cursors already establish the baseline.
+                           # On restart, do not discard messages that arrived
+                           # after this listener started but before first poll.
+                           'historical':cursors is None or timestamp <= self.started,
                            'observed_at':datetime.fromtimestamp(timestamp, timezone.utc).isoformat()})
+            if quoted is not None:
+                events[-1]['quoted_message'] = quoted
         spool.capture_database(source, events, updated)
         self.seen_sources.add(source)
 

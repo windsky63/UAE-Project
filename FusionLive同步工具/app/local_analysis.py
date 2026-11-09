@@ -1,6 +1,6 @@
 """Bounded ZIP/7z extraction with explicit collision handling and member audit."""
 
-from app_paths import HOME, CODE
+from paths import HOME, CODE
 from collections import defaultdict, deque
 import hashlib
 import csv
@@ -10,7 +10,7 @@ import re
 import stat
 import tempfile
 import zipfile
-from output_paths import check_output_directory
+from paths import check_output_directory
 import textwrap
 import parse_pcf_to_json as pcf
 import argparse
@@ -493,11 +493,13 @@ def classify(row, rule):
     return 'shop'
 
 
-def parse_file(path, split_dir):
+def parse_file(path, split_dir, *, logical_name=None):
     split_dir = check_output_directory(split_dir, source_root=path)
-    suffix = path.suffix.lower()
+    suffix = Path(logical_name or path.name).suffix.lower()
     if suffix == '.pcf':
         return parse_models(path, split_dir)
+    if suffix != '.idf':
+        raise ValueError('不支持的管线文件格式：' + (suffix or '无扩展名'))
     text = idf.read_text(path)
     if not re.search(r'^\s*-6\s', text, re.M):
         raise ValueError('IDF未识别到-6管线记录。')
@@ -556,8 +558,10 @@ def analyze(*, database=None, root=None, project='本地项目', output=None, ba
                     incomplete.add(key[:3])
                 continue
             pipeline_models[key] = dict(item)
-    def emit(path, project, origin, depth=0, budget=None):
-        suffix = path.suffix.lower()
+    def emit(path, project, origin, depth=0, budget=None, logical_name=None):
+        # Files waiting in runtime/download_ready are stored as extensionless
+        # `content`; use the ledger/archive member name to select a parser.
+        suffix = Path(logical_name or path.name).suffix.lower()
         unit = unit_from(origin)
         record = {'project': project, 'origin': origin, 'path': str(path), 'unit': unit, 'format': suffix}
         audit.append(record)
@@ -599,7 +603,7 @@ def analyze(*, database=None, root=None, project='本地项目', output=None, ba
                     emit(extracted, project, member_origin, depth + 1, budget)
                 return
             note(f'解析 {suffix.upper()[1:]} 管线与元件：{origin}')
-            models = parse_file(path, run / 'split_idf' / file_hash[:16])
+            models = parse_file(path, run / 'split_idf' / file_hash[:16], logical_name=logical_name)
             note(f'管线元件解析完成：{origin}；识别 {len(models)} 条管线，随后核对重复和冲突')
             record['pipelines'] = [str(model['pipelineName']) for _, model in models]
             file_units = {unit_from(str(model['pipelineName']), origin) for _, model in models}
@@ -635,7 +639,8 @@ def analyze(*, database=None, root=None, project='本地项目', output=None, ba
             note(f'条目结束：{origin}；状态 {record.get("state", "未完成")}；{record.get("detail", "")}')
     for source in sources:
         emit(source['path'], source['project'], source['origin'],
-             budget={'bytes': MAX_ARCHIVE_EXPANDED_BYTES, 'files': MAX_ARCHIVE_ENTRIES})
+             budget={'bytes': MAX_ARCHIVE_EXPANDED_BYTES, 'files': MAX_ARCHIVE_ENTRIES},
+             logical_name=(source.get('item') or {}).get('filename'))
     unavailable = sum(r['state'] != '本地文件可分析' for r in inventory)
     by_group = defaultdict(list)
     note(f'开始生成焊口并分类汇总：管线候选 {len(pipeline_models)} 条；PCF使用设备连接v5及260818预制率算法；IDF分类规则 {prefab_rule}')

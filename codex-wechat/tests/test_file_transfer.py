@@ -79,6 +79,16 @@ def action(identity, message, confirmed=True):
     return dict(action='send', file_ids=[identity], send_confirmed=confirmed, authorization_quote=message['text'])
 
 
+def test_quoted_old_instruction_is_not_current_file_delivery_authorization(files):
+    config, chat, workspace, identity, _ = files
+    message = event('请解释引用内容')
+    message['quoted_message'] = dict(text='把这份文件发给我', sender='someone else')
+    decision = dict(action='send', file_ids=[identity], send_confirmed=True,
+                    authorization_quote=message['quoted_message']['text'])
+    result = transfer.prepare_action(config, chat, message, workspace, decision, 'reply')
+    assert not result.file_result or result.file_result.get('kind') != 'send'
+
+
 def multiple_files(files, count, content=None):
     config, chat, workspace, _, path = files
     with sqlite3.connect(path.parent.parent / 'runtime/ledger.sqlite3') as db:

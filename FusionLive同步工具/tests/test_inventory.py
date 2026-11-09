@@ -89,6 +89,51 @@ class InventoryTests(unittest.TestCase):
         for key in ('status', 'path', 'sha256', 'bytes', 'attempts'):
             self.assertEqual(after[key], before[key])
 
+    def linked_observations(self):
+        common = dict(firstVersionId='first',isVirtualLink='true',versionLabel='1.9')
+        source = content(**common,virtualLinkId='source-link',isSourceDocument='true')
+        attached = content(**common,virtualLinkId='package-link',isSourceDocument='false',
+                           ownerId='package',relationshipType='Attachment',creationDate='2026-10-02')
+        return source,attached
+
+    def test_virtual_link_context_timestamp_does_not_create_false_versions(self):
+        self.catalogue([doc(),doc('package')])
+        source,attached = self.linked_observations()
+        self.related([source])
+        original = self.mark_done()
+        before = dict(self.ledger.one("SELECT * FROM files WHERE id='v1'"))
+        for _ in range(3):
+            self.related([attached],'package')
+            self.related([source])
+        after = self.ledger.one("SELECT * FROM files WHERE id='v1'")
+        for key in ('status','path','sha256','bytes','attempts','fingerprint'):
+            self.assertEqual(after[key],before[key])
+        self.assertEqual(self.ledger.one('SELECT COUNT(*) FROM file_history')[0],0)
+        self.assertEqual(self.ledger.one("SELECT COUNT(*) FROM document_files WHERE file_id='v1' AND active=1")[0],2)
+        self.assertEqual(original.read_bytes(),b'old')
+
+    def test_virtual_link_real_content_changes_still_requeue(self):
+        source,attached = self.linked_observations()
+        for change in ({'contentSize':'4'},{'revision':'1'},{'versionLabel':'1.10'},
+                       {'contentChecksum':'new'}, {'filename':'renamed.pdf'}):
+            with self.subTest(change=change):
+                self.catalogue([doc(),doc('package')])
+                self.related([source])
+                self.mark_done()
+                count = self.ledger.one('SELECT COUNT(*) FROM file_history')[0]
+                self.related([{**attached,**change}],'package')
+                self.assertEqual(self.ledger.one("SELECT status FROM files WHERE id='v1'")[0],'pending')
+                self.assertEqual(self.ledger.one('SELECT COUNT(*) FROM file_history')[0],count+1)
+
+    def test_timestamp_change_within_same_virtual_entry_still_requeues(self):
+        self.catalogue([doc()])
+        source,_ = self.linked_observations()
+        self.related([source])
+        self.mark_done()
+        self.related([{**source,'creationDate':'2026-10-03'}])
+        self.assertEqual(self.ledger.one('SELECT status FROM files')[0],'pending')
+        self.assertEqual(self.ledger.one('SELECT COUNT(*) FROM file_history')[0],1)
+
     def test_new_attachment_is_found_without_main_metadata_change(self):
         record = doc(hasAttachments='true')
         self.catalogue([record])

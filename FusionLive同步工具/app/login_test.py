@@ -1,6 +1,6 @@
 """One-file connection test with a persisted Beijing-time access window."""
 
-from app_paths import HOME, CODE
+from paths import HOME, CODE
 import json
 import re
 from pathlib import Path

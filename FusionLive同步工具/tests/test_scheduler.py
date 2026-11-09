@@ -38,14 +38,29 @@ class ProgressTests(unittest.TestCase):
         self.assertNotIn('下载/注销', message)
         self.assertEqual(checks[0], 8)
 
-    def test_publisher_wait_reports_stack_without_terminating_thread(self):
+    def test_publisher_wait_reports_status_without_thread_stack(self):
         publisher = Mock(ident=123)
         publisher.is_alive.side_effect = [True, False]
-        with patch('scheduler.sys._current_frames', return_value={}), patch('scheduler.log') as output:
+        with patch.dict('os.environ', {'FUSIONLIVE_LOG_DETAIL': '0'}), \
+             patch('scheduler.sys._current_frames') as frames, patch('scheduler.log') as output:
             scheduler.wait_for_publisher(publisher)
         publisher.join.assert_called_once_with(timeout=.5)
-        self.assertIn('等待简报线程退出', output.call_args.args[0])
+        self.assertIn('等待简报线程安全退出', output.call_args.args[0])
+        self.assertNotIn('\n', output.call_args.args[0])
+        frames.assert_not_called()
         publisher.terminate.assert_not_called()
+
+    def test_thread_stack_is_opt_in_and_saved_outside_operational_log(self):
+        with tempfile.TemporaryDirectory() as temp, \
+             patch('scheduler.RUNTIME', Path(temp)), \
+             patch.dict('os.environ', {'FUSIONLIVE_LOG_DETAIL': '1'}), \
+             patch('scheduler.sys._current_frames', return_value={}), patch('scheduler.log') as output:
+            publisher = Mock(ident=123)
+            publisher.is_alive.side_effect = [True, False]
+            scheduler.wait_for_publisher(publisher, label='同步监控')
+            diagnostic = Path(temp)/'scheduler-thread-stacks.txt'
+            self.assertIn('同步监控', diagnostic.read_text(encoding='utf-8'))
+            self.assertNotIn('\n', output.call_args.args[0])
 
     def test_pages_records_and_associations_are_distinct(self):
         state = Progress()
@@ -127,6 +142,72 @@ class ProgressTests(unittest.TestCase):
 
 
 class SchedulerTests(unittest.TestCase):
+    def test_yesterdays_completion_observed_today_does_not_skip_today(self):
+        from contextlib import nullcontext
+        from types import SimpleNamespace
+        at = datetime(2026, 11, 3, 9, tzinfo=LOCAL)
+        calls = []
+        def start(exiting):
+            calls.append(1)
+            if len(calls) == 2:
+                exiting.set()
+            return SimpleNamespace(is_alive=lambda: False, result=0, started_day='2026-11-02')
+        sleeps = []
+        def sleep(_):
+            sleeps.append(1)
+            if len(sleeps) > 4:
+                self.fail('Yesterday completion prevented today from starting')
+        with patch('scheduler.sys.argv', ['scheduler.py']), \
+             patch('scheduler.RunLock', return_value=nullcontext()), \
+             patch('scheduler.threading.Thread'), patch('scheduler.signal.signal'), \
+             patch('scheduler.resume_background_analysis'), patch('scheduler.request_full_stop'), \
+             patch('scheduler.wait_for_publisher'), patch('scheduler.wait_for_analysis_exit'), \
+             patch('scheduler.log'), patch('scheduler.now', return_value=at), \
+             patch('scheduler.time.monotonic', side_effect=itertools.count(0, 61)), \
+             patch('scheduler.time.sleep', side_effect=sleep), patch('scheduler.start_sync_task', side_effect=start):
+            self.assertEqual(scheduler.main(), 0)
+        self.assertEqual(len(calls), 2)
+
+    def test_stop_marker_is_scoped_to_beijing_day(self):
+        yesterday = datetime(2026, 11, 2, 23, tzinfo=LOCAL)
+        today = datetime(2026, 11, 3, 2, tzinfo=LOCAL)
+        with patch('scheduler.now', return_value=yesterday), patch('scheduler.log'):
+            scheduler.request_stop()
+            self.assertTrue(scheduler.stopped_today(yesterday))
+            self.assertFalse(scheduler.stopped_today(today))
+            self.assertFalse((scheduler.RUNTIME/'stop.request').exists())
+        with patch('scheduler.now', return_value=today):
+            scheduler.request_stop()
+        self.assertTrue(scheduler.stopped_today(today))
+
+    def test_scheduler_continues_when_its_log_cannot_be_written(self):
+        with patch('runtime_logging.BoundedLog.write', side_effect=PermissionError('busy log')), \
+             patch('scheduler._log_warned', False), patch('scheduler.sys.stderr', io.StringIO()), \
+             patch('scheduler.sys.stdout', io.StringIO()):
+            scheduler.log('still scheduling')
+            self.assertTrue(scheduler._log_warned)
+
+    def test_resident_scheduler_retries_failed_worker_in_same_window(self):
+        from contextlib import nullcontext
+        from types import SimpleNamespace
+        at = datetime(2026, 11, 2, 9, tzinfo=LOCAL)
+        calls = []
+        def start(exiting):
+            calls.append(1)
+            if len(calls) == 2:
+                exiting.set()
+            return SimpleNamespace(is_alive=lambda: False, result=1)
+        with patch('scheduler.sys.argv', ['scheduler.py']), \
+             patch('scheduler.RunLock', return_value=nullcontext()), \
+             patch('scheduler.threading.Thread'), patch('scheduler.signal.signal'), \
+             patch('scheduler.resume_background_analysis'), patch('scheduler.request_full_stop'), \
+             patch('scheduler.wait_for_publisher'), patch('scheduler.wait_for_analysis_exit'), \
+             patch('scheduler.log'), patch('scheduler.now', return_value=at), \
+             patch('scheduler.time.monotonic', side_effect=itertools.count(0, 61)), \
+             patch('scheduler.time.sleep'), patch('scheduler.start_sync_task', side_effect=start):
+            self.assertEqual(scheduler.main(), 0)
+        self.assertEqual(len(calls), 2)
+
     def setUp(self):
         temporary=tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
@@ -175,6 +256,7 @@ class SchedulerTests(unittest.TestCase):
             with patch('scheduler.RUNTIME', Path(temp)), patch('scheduler.now', return_value=datetime(2026, 10, 20, hour, minute, tzinfo=LOCAL)), patch('scheduler.subprocess.Popen', return_value=child) as launched, patch('scheduler.log'), patch('scheduler.check_before_login'):
                 scheduler.run_worker('fake', 'secret', exiting, commands, action=action)
                 self.assertIn(action, launched.call_args.args[0])
+                self.assertEqual((Path(temp) / 'login.paused').exists(), code == 3)
             stopped = (Path(temp) / 'stop.request').exists()
             child.terminate.assert_not_called()
             child.kill.assert_not_called()
@@ -189,6 +271,9 @@ class SchedulerTests(unittest.TestCase):
 
     def test_unconfirmed_logout_disables_next_login(self):
         self.assertEqual(self.run_fake_worker(9, 0, code=3), (False, False))
+
+    def test_unexpected_worker_exit_does_not_permanently_pause_login(self):
+        self.assertEqual(self.run_fake_worker(9, 0, code=5), (False, False))
 
     def test_scope_review_keeps_publication_scheduler(self):
         self.assertEqual(self.run_fake_worker(9, 0, code=0, review=True), (False, False))

@@ -1,6 +1,6 @@
 """ASCII-named launcher so cmd.exe never needs to parse a Unicode script name."""
 
-from app_paths import HOME, CODE
+from paths import HOME, CODE
 import importlib
 from contextlib import closing
 import json

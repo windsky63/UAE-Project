@@ -1,7 +1,7 @@
 """Resident daily scheduler; leave this console open. Beijing time throughout."""
 
-from app_paths import HOME, CODE
-from datetime import timedelta
+from paths import HOME, CODE
+from datetime import datetime, timedelta
 from contextlib import closing
 import os
 import queue
@@ -23,6 +23,8 @@ from briefing_schedule import run_daily_briefing
 from analysis_worker import request_analysis_stop, resume_background_analysis, wait_for_analysis_exit, worker_lock
 
 START, STOP = 120, 630
+RETRY_SECONDS = 60
+_log_warned = False
 
 
 def eligible(at, last_day=None):
@@ -35,15 +37,40 @@ def next_start(at):
 
 
 def log(message):
+    global _log_warned
     line = now().strftime('[%m-%d %H:%M:%S] ') + message
-    from runtime_logging import BoundedLog
+    from runtime_logging import BoundedLog, operation_log
     print(line, flush=True)
-    BoundedLog(day_folder() / 'scheduler.log').write(line + '\n')
+    try:
+        BoundedLog(operation_log('scheduler.log', HOME)).write(line + '\n')
+    except OSError as exc:
+        if not _log_warned:
+            print(f'调度日志写入失败，常驻调度继续执行：{type(exc).__name__}：{exc}', file=sys.stderr, flush=True)
+            _log_warned = True
 
 
 def request_stop():
     RUNTIME.mkdir(exist_ok=True)
     (RUNTIME / 'stop.request').write_text(now().isoformat(), encoding='utf-8')
+
+
+def stopped_today(at):
+    marker = RUNTIME / 'stop.request'
+    try:
+        try:
+            requested = datetime.fromisoformat(marker.read_text(encoding='utf-8').strip())
+            if requested.tzinfo is None:
+                raise ValueError('停止标记缺少时区')
+            stop_day = requested.astimezone(at.tzinfo).date()
+        except (ValueError, UnicodeError):
+            stop_day = datetime.fromtimestamp(marker.stat().st_mtime, at.tzinfo).date()
+        if stop_day < at.date():
+            marker.unlink(missing_ok=True)
+            log('已清除往日停止标记，恢复今天的下载调度。')
+            return False
+        return True
+    except FileNotFoundError:
+        return False
 
 
 def request_full_stop():
@@ -116,9 +143,18 @@ def wait_for_publisher(publisher, label='简报'):
     announced = 0
     while publisher.is_alive():
         if time.monotonic() >= announced:
-            frame = sys._current_frames().get(publisher.ident)
-            stack = ''.join(traceback.format_stack(frame)) if frame is not None else '线程堆栈暂不可用'
-            log(f'等待{label}线程退出，已等待 {time.monotonic()-started:.0f} 秒；当前调用位置：\n{stack}')
+            log(f'等待{label}线程安全退出，已等待 {time.monotonic()-started:.0f} 秒。')
+            # Routine queue waits are not errors. Keep opt-in diagnostics out
+            # of the operational log and console consumed by the log viewer.
+            if os.environ.get('FUSIONLIVE_LOG_DETAIL') == '1':
+                from runtime_logging import BoundedLog
+                frame = sys._current_frames().get(publisher.ident)
+                stack = ''.join(traceback.format_stack(frame)) if frame is not None else '线程堆栈暂不可用'
+                try:
+                    BoundedLog(RUNTIME/'scheduler-thread-stacks.txt').write(
+                        f'{now().isoformat()} {label}\n{stack}\n')
+                except OSError as exc:
+                    log(f'线程诊断写入失败：{type(exc).__name__}：{exc}')
             announced = time.monotonic() + 30
         publisher.join(timeout=.5)
 
@@ -167,8 +203,8 @@ def run_worker(username, password, exiting, messages, action='auto'):
                     exiting.set()
                 if exiting.is_set():
                     request_analysis_stop(HOME)
-                request_stop()
                 if not stopping:
+                    request_stop()
                     log('正在安全收尾：停止下载、清理临时文件并注销，请等待。')
                     stopping = True
             try:
@@ -212,7 +248,7 @@ def run_worker(username, password, exiting, messages, action='auto'):
                     stages = [r[0] for r in db.execute('SELECT stage FROM workflows')]
                     if stages and all(stage == 'scope_review' for stage in stages):
                         log('全项目盘点已完成，等待人工确认施工范围；保留简报定时任务，确认前不会下载。')
-        if code == 3 or code not in (0, 1, 2):
+        if code == 3:
             (RUNTIME / 'login.paused').write_text('同步退出异常；检查 last_logout.json 后人工恢复登录。', encoding='utf-8')
             log('同步退出异常，暂停后续自动登录；保留离线分析及简报定时任务。请检查 runtime/last_logout.json。')
         return code
@@ -244,10 +280,11 @@ def start_sync_task(exiting):
             if exiting.is_set():
                 return
             log('按已保存阶段继续：首次全量盘点、集中下载或每日维护。')
-            run_worker(username, password, exiting, queue.Queue())
+            threading.current_thread().result = run_worker(username, password, exiting, queue.Queue())
         except Exception as exc:
-            log(f'同步启动或执行失败：{type(exc).__name__}；保留离线简报调度，请检查同步日志。')
+            log(f'同步启动或执行失败：{type(exc).__name__}：{exc}\n{traceback.format_exc()}')
     task = threading.Thread(target=monitor, daemon=True, name='sync-monitor')
+    task.started_day = now().date().isoformat()
     task.start()
     return task
 
@@ -263,7 +300,7 @@ def main():
         print('安全退出完成：同步、定时推送和后台解压解析均已停止。', flush=True)
         return 0
     if '--check' in sys.argv:
-        print('Scheduler: Beijing download 02:00-10:30; briefing preparation 10:40; WeChat images 11:00; Q=safe exit.')
+        print('Scheduler: Beijing download 02:00-10:30; publication times from runtime/wechat_push.json; Q=safe exit.')
         return 0
     exiting, messages = threading.Event(), queue.Queue()
     with RunLock('scheduler.lock'):
@@ -278,7 +315,7 @@ def main():
             exiting.set()
         signal.signal(signal.SIGINT, stop_all)
         signal.signal(signal.SIGTERM, stop_all)
-        log('常驻调度已启动：北京时间02:00—10:30同步，10:40准备管道简报，11:00微信推送。Q回车或Ctrl+C安全退出；S回车只停止今天同步。')
+        log('常驻调度已启动：北京时间02:00—10:30同步；推送文和管道简报按管理中心保存的独立时间发布。Q回车或Ctrl+C安全退出；S回车只停止今天同步。')
         if '--resume-now' in sys.argv:
             at = now()
             if not START <= at.hour * 60 + at.minute < STOP:
@@ -291,6 +328,7 @@ def main():
             username, password = get_credentials()
             return run_worker(username, password, exiting, messages, action='resume-scan')
         last_day, announced = None, None
+        retry_at = 0
         resume_background_analysis(HOME)
         publisher = threading.Thread(target=run_daily_briefing, args=(HOME, exiting, log), daemon=True,
                                      name='daily-briefing')
@@ -307,17 +345,34 @@ def main():
                     exiting.wait(.2)
                     continue
                 at = now()
-                if eligible(at, last_day):
+                if sync_task is not None:
+                    if getattr(sync_task, 'result', None) == 0:
+                        last_day = getattr(sync_task, 'started_day', at.date().isoformat())
+                    sync_task = None
+                    retry_at = time.monotonic() + RETRY_SECONDS
+                    if last_day != at.date().isoformat():
+                        log(f'本轮同步已退出；下载窗口内 {RETRY_SECONDS} 秒后继续核对及重试未完成任务。')
+                if last_day and last_day != at.date().isoformat():
+                    last_day = None
+                if stopped_today(at):
                     last_day = at.date().isoformat()
+                # A manual stop lasts for this day only. Network failures never
+                # mark the day complete; every pass resumes durable checkpoints.
+                if eligible(at, last_day) and time.monotonic() >= retry_at:
                     if (RUNTIME / 'login.paused').exists():
-                        log('账号登录仍被禁止：跳过平台同步，保留离线分析、定时简报及已配置的微信推送。')
+                        retry_at = time.monotonic() + RETRY_SECONDS
+                        log('账号登录仍被禁止；60秒后重新检查。请核对 runtime/login.paused 与 last_logout.json；离线任务继续。')
                     else:
                         sync_task = start_sync_task(exiting)
                     announced = None
                 else:
-                    target = next_start(at).isoformat()
+                    waiting_retry = eligible(at, last_day)
+                    target = f'retry:{retry_at}' if waiting_retry else next_start(at).isoformat()
                     if target != announced:
-                        log('保持窗口开启；等待下一次同步：' + target + '，每日简报和微信推送独立定时执行。')
+                        if waiting_retry:
+                            log(f'仍在下载窗口内，约 {max(0, retry_at-time.monotonic()):.0f} 秒后重试未完成任务或重新检查登录限制。')
+                        else:
+                            log('保持窗口开启；等待下一次同步：' + target + '，每日简报和微信推送独立定时执行。')
                         announced = target
                     time.sleep(0.5)
         finally:

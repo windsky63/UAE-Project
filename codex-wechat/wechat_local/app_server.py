@@ -10,7 +10,8 @@ import threading
 import time
 
 from .codex_settings import (CodexConfigTimeoutError, CodexGenerationTimeoutError,
-                             CodexIdleTimeoutError, permission_arguments, transport_overrides)
+                             CodexIdleTimeoutError, CodexConnectionWatch, CodexServiceError, service_failure,
+                             permission_arguments, transport_overrides)
 from .shared_backend import SharedConnection, RpcError, RpcTimeout, config_signature
 
 
@@ -42,6 +43,7 @@ def public_notification(message):
     elif method in ('turn/started', 'turn/completed'):
         turn = params.get('turn') or {}
         safe['turn'] = dict(id=turn.get('id'), status=turn.get('status'), failed=bool(turn.get('error')))
+        safe['turn']['serviceFailure'] = service_failure(turn.get('error'))
     elif method == 'thread/tokenUsage/updated':
         info = params.get('tokenUsage') or {}
         usage = info.get('last') or {}
@@ -51,7 +53,9 @@ def public_notification(message):
         pass
     elif method == 'error':
         safe['willRetry'] = params.get('willRetry') is True
+        safe['serviceFailure'] = service_failure(params.get('error') or params.get('message'))
     elif method.startswith(('item/', 'turn/')):
+        safe['modelProgress'] = method in ('item/reasoning/textDelta', 'item/reasoning/summaryTextDelta', 'item/agentMessage/delta')
         method = 'progress/heartbeat'
     else:
         return None
@@ -63,7 +67,13 @@ class Client:
     def __init__(self, command, cwd):
         self.events = queue.Queue(maxsize=256)
         self.overflow = threading.Event()
-        self.transport = SharedConnection(command, cwd, 'wechat', self.put_event)
+        try:
+            self.transport = SharedConnection(command, cwd, 'wechat', self.put_event)
+        except (RpcError, RpcTimeout) as exc:
+            reason = service_failure(str(exc))
+            if reason:
+                raise CodexServiceError(reason) from None
+            raise CodexBackendError('Codex 连接初始化失败，请检查本机后端与登录状态') from None
         self.process = self.transport.process
 
     def put_event(self, message):
@@ -83,7 +93,10 @@ class Client:
             if method == 'config/read':
                 raise CodexConfigTimeoutError(f'读取 Codex 配置超时：config/read 等待响应超过 {timeout} 秒') from None
             raise CodexBackendTimeoutError(f'Codex 后端 {method} 等待响应超过 {timeout} 秒') from None
-        except RpcError:
+        except RpcError as exc:
+            reason = service_failure(str(exc))
+            if reason:
+                raise CodexServiceError(reason) from None
             raise CodexBackendError('Codex 后端请求失败：' + method) from None
 
     def close(self):
@@ -133,6 +146,7 @@ class ResidentBackend:
         self.session_workers = ThreadPoolExecutor(max_workers=2, thread_name_prefix='codex-session')
         self.lock = threading.Lock()
         self.closed = False
+        self.stop_requested = threading.Event()
 
     def discard(self):
         client, self.client = self.client, None
@@ -359,7 +373,7 @@ class ResidentBackend:
                     turn_params['outputSchema'] = schema
                 setup_seconds = time.monotonic() - started
                 turn_started = time.monotonic()
-                turn = client.rpc('turn/start', turn_params, min(30, self.config.codex_timeout_seconds))['turn']['id']
+                turn = client.rpc('turn/start', turn_params, min(30, self.config.codex_timeout_seconds or 30))['turn']['id']
                 text, usage, tools = self.wait_turn(client, conversation.thread, turn, event_id, turn_started)
                 conversation.turns += 1
                 self._remember_payload(conversation, payload)
@@ -391,12 +405,15 @@ class ResidentBackend:
 
     def wait_turn(self, client, thread, turn_id, event_id, started):
         last_progress = time.monotonic()
+        connection = CodexConnectionWatch(self.config.codex_connect_timeout_seconds)
         active, answers, usage, tool_count, notified = set(), [], {}, 0, False
         while True:
+            if self.stop_requested.is_set():
+                raise CodexBackendError('Codex 任务已主动停止')
             if client.overflow.is_set():
                 raise CodexBackendError('Codex 后端事件队列溢出，当前任务停止，未自动重试')
             now = time.monotonic()
-            if now - started >= self.config.codex_timeout_seconds:
+            if self.config.codex_timeout_seconds and now - started >= self.config.codex_timeout_seconds:
                 raise CodexGenerationTimeoutError('Codex generation timed out')
             idle = self.config.codex_idle_timeout_seconds
             if idle and not active and now - last_progress >= idle:
@@ -419,8 +436,12 @@ class ResidentBackend:
             if params.get('threadId') != thread or (params.get('turnId') and params['turnId'] != turn_id):
                 continue
             last_progress = time.monotonic()
+            if method == 'progress/heartbeat' and params.get('modelProgress'):
+                connection.progress()
             if method in ('item/started', 'item/completed'):
                 item = params.get('item') or {}
+                if item.get('type') in ('reasoning', 'agentMessage', 'commandExecution', 'mcpToolCall', 'dynamicToolCall', 'webSearch'):
+                    connection.progress()
                 if item.get('type') in ('commandExecution', 'mcpToolCall', 'dynamicToolCall', 'webSearch'):
                     if method == 'item/started':
                         active.add(item.get('id'))
@@ -441,14 +462,28 @@ class ResidentBackend:
                 if turn.get('id') != turn_id:
                     continue
                 if turn.get('status') != 'completed' or turn.get('failed'):
+                    if turn.get('serviceFailure'):
+                        raise CodexServiceError(turn['serviceFailure'])
                     raise CodexBackendError('Codex 生成失败或被中断')
                 if not answers or not answers[-1].strip():
                     raise CodexBackendError('Codex 未返回已完成的最终回复')
                 return answers[-1].strip(), usage, tool_count
-            elif method == 'error' and not params.get('willRetry'):
-                raise CodexBackendError('Codex 生成请求失败，请检查本机连接与登录状态')
+            elif method == 'error':
+                reason = params.get('serviceFailure')
+                if reason == 'account':
+                    raise CodexServiceError(reason)
+                if not params.get('willRetry'):
+                    if reason:
+                        raise CodexServiceError(reason)
+                    raise CodexBackendError('Codex 生成请求失败，请检查本机连接与登录状态')
+                if reason == 'network':
+                    connection.retry(time.monotonic())
+
+    def request_stop(self):
+        self.stop_requested.set()
 
     def close(self):
+        self.request_stop()
         with self.lock:
             self.closed = True
             self.discard()

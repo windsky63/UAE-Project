@@ -22,6 +22,7 @@ build/
 *.p12
 *.pfx
 credentials.json
+credentials.bootstrap.json
 auth.json
 local_credentials.py
 wechat.codex.json

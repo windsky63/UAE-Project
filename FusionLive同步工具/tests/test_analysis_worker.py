@@ -23,6 +23,75 @@ from tests.test_local_analysis import PCF
 
 
 class WorkerTests(unittest.TestCase):
+    def test_unchanged_discovery_does_not_rewrite_jobs_or_reexport_after_restart(self):
+        self.publish()
+        self.queue.discover()
+        self.queue.process_next()
+        self.queue.mark_exported('ledger')
+        self.queue.mark_exported()
+        self.queue._export_dirty = False
+        before = self.queue.db.total_changes
+        self.queue.discover()
+        self.assertEqual(self.queue.db.total_changes, before)
+        self.assertFalse(self.queue.snapshot_pending())
+        reopened = AnalysisQueue(self.database)
+        try:
+            reopened.discover()
+            self.assertFalse(reopened._export_dirty)
+            self.assertFalse(reopened.snapshot_pending())
+            self.assertEqual(reopened.counts(), {'done': 1})
+        finally:
+            reopened.close()
+
+    def test_busy_initial_discovery_defers_workbook_in_favour_of_parsing(self):
+        reader = Mock()
+        reader.execute.return_value = [('documents',), ('folders',), ('document_files',)]
+        clock = [100]
+        self.queue._export_dirty = True
+        with patch('archive_index.readonly', return_value=reader), \
+             patch.object(self.queue, 'counts', return_value={'pending': 1}), \
+             patch('analysis_worker.time.monotonic', side_effect=lambda: clock[0]), \
+             patch('sync.export_csv', return_value='fixture.xlsx') as export:
+            self.queue.refresh_ledger_export()
+            export.assert_not_called()
+            clock[0] = 1001
+            self.queue.refresh_ledger_export()
+            export.assert_called_once()
+
+    def test_unavailable_source_changes_invalidate_snapshot_even_without_new_jobs(self):
+        self.publish(state='pending')
+        self.assertEqual(self.queue.discover(), 0)
+        self.queue.mark_exported()
+        self.queue.mark_exported('ledger')
+        self.queue._export_dirty = False
+        self.assertFalse(self.queue.snapshot_pending())
+        self.publish('not-yet-downloaded', state='pending')
+        self.assertEqual(self.queue.discover(), 0)
+        self.assertTrue(self.queue.snapshot_pending())
+
+    def test_snapshot_looks_up_current_keys_without_scanning_historical_jobs(self):
+        self.publish()
+        self.queue.discover()
+        self.queue.process_next()
+        with self.queue.db:
+            self.queue.db.executemany('''INSERT INTO jobs(key,project,file_id,path,origin,state,active,updated)
+                VALUES(?,'history',?,'missing','history','done',0,0)''',
+                [(f'{i:064x}', str(i)) for i in range(30000)])
+        connect = sqlite3.connect
+        def bounded(*args, **kwargs):
+            db = connect(*args, **kwargs)
+            if 'queue.sqlite3' in str(args[0]):
+                ticks = [0]
+                def budget():
+                    ticks[0] += 1
+                    return int(ticks[0] > 10)
+                db.set_progress_handler(budget, 1000)
+            return db
+        with patch('analysis_worker.sqlite3.connect', side_effect=bounded):
+            _, report, _ = self.snapshot()
+        self.assertEqual(report['completed_analysis_files'], 1)
+        self.assertEqual(report['pending_analysis_files'], 0)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -51,8 +120,99 @@ class WorkerTests(unittest.TestCase):
                         path.stat().st_size, hashlib.sha256(path.read_bytes()).hexdigest()))
         return path
 
+    def test_failed_workbook_export_is_throttled_while_analysis_continues(self):
+        from unittest.mock import Mock
+        reader=Mock()
+        reader.execute.return_value=[('documents',),('folders',),('document_files',)]
+        clock=[100]
+        self.queue._export_dirty=True
+        self.queue._last_export=-1000  # Already past the initial busy grace interval.
+        with patch('archive_index.readonly',return_value=reader), \
+             patch.object(self.queue,'counts',return_value={'pending':1}), \
+             patch('analysis_worker.time.monotonic',side_effect=lambda:clock[0]), \
+             patch('sync.export_csv',side_effect=PermissionError('unavailable output folder')) as export:
+            self.queue.refresh_ledger_export()
+            clock[0]=101
+            self.queue.refresh_ledger_export()
+            self.assertEqual(export.call_count,1)
+            self.assertTrue(self.queue._export_dirty)
+            clock[0]=1001
+            self.queue.refresh_ledger_export()
+            self.assertEqual(export.call_count,2)
+
+    def test_unchanged_ledger_poll_skips_full_scan_but_new_commit_is_discovered(self):
+        import local_analysis
+        self.publish()
+        with patch('local_analysis.ledger_sources', wraps=local_analysis.ledger_sources) as scan:
+            self.assertEqual(self.queue.discover_if_changed(), 1)
+            self.assertEqual(self.queue.discover_if_changed(), 0)
+            self.assertEqual(scan.call_count, 1)
+            self.publish('new')
+            self.assertEqual(self.queue.discover_if_changed(), 1)
+            self.assertEqual(scan.call_count, 2)
+            self.queue._last_full_scan = float('-inf')
+            self.queue.discover_if_changed()
+            self.assertEqual(scan.call_count, 3)
+
     def snapshot(self):
         return cached_snapshot(self.database, output=self.base / 'snapshots')
+
+    def stage(self, filename, data):
+        path = self.base / 'runtime/download_ready/one/content'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        with closing(sqlite3.connect(self.database)) as db, db:
+            db.execute('INSERT OR REPLACE INTO files VALUES(?,?,?,?,?,?,?,1)',
+                       ('p', 'one', filename, path.relative_to(self.base).as_posix(),
+                        'done', len(data), hashlib.sha256(data).hexdigest()))
+        return path
+
+    def test_staged_pdf_worker_recovers_failed_job_without_idf_parser(self):
+        self.stage('drawing.PDF', b'%PDF-1.7\nfixture')
+        self.queue.discover()
+        with self.queue.db:
+            self.queue.db.execute("UPDATE jobs SET state='failed',error='IDF未识别到-6管线记录。',attempts=3,retryable=0")
+        self.queue.discover()
+        with patch('local_analysis.parse_file', side_effect=AssertionError('PDF entered pipe parser')):
+            self.assertTrue(self.queue.process_next())
+        job = self.queue.db.execute('SELECT * FROM jobs WHERE active=1').fetchone()
+        self.assertEqual(job['state'], 'done', job['error'])
+        report = json.loads((self.queue.cache / job['result_path']).read_text(encoding='utf-8'))
+        self.assertEqual(report['files'][0]['format'], '.pdf')
+
+    def test_staged_pcf_worker_uses_pcf_parser(self):
+        self.stage('pipe.pcf', PCF.encode('utf-8'))
+        self.queue.discover()
+        with self.queue.db:
+            self.queue.db.execute("UPDATE jobs SET state='failed',error='IDF未识别到-6管线记录。',attempts=3,retryable=0")
+        self.queue.discover()
+        self.assertTrue(self.queue.process_next())
+        job = self.queue.db.execute('SELECT * FROM jobs WHERE active=1').fetchone()
+        self.assertEqual(job['state'], 'done', job['error'])
+        self.assertEqual(self.queue.db.execute('SELECT source FROM pipeline_inventory').fetchone()[0], 'PCF')
+
+    def test_staged_zip_worker_uses_archive_parser_after_queue_reopen(self):
+        content = io.BytesIO()
+        with zipfile.ZipFile(content, 'w') as archive:
+            archive.writestr('pipe.pcf', PCF)
+        self.stage('drawing.zip', content.getvalue())
+        self.queue.discover()
+        reopened = AnalysisQueue(self.database)
+        try:
+            self.assertTrue(reopened.process_next())
+            job = reopened.db.execute('SELECT * FROM jobs WHERE active=1').fetchone()
+            self.assertEqual(job['state'], 'done', job['error'])
+            self.assertEqual(reopened.db.execute('SELECT source FROM pipeline_inventory').fetchone()[0], 'PCF')
+        finally:
+            reopened.close()
+
+    def test_pipe_parser_rejects_pdf_and_unknown_extension_before_idf_read(self):
+        from local_analysis import parse_file
+        path = self.stage('drawing.pdf', b'%PDF-1.7\nfixture')
+        for name in ('drawing.pdf', 'content'):
+            with self.subTest(name=name), patch('local_analysis.idf.read_text', side_effect=AssertionError('IDF read PDF')):
+                with self.assertRaisesRegex(ValueError, '不支持的管线文件格式'):
+                    parse_file(path, self.base / 'split', logical_name=name)
 
     def test_weld_export_uses_current_deduplicated_cached_totals(self):
         self.publish()
@@ -191,7 +351,7 @@ class WorkerTests(unittest.TestCase):
             with worker_lock(cache) as second:
                 self.assertFalse(second)
         with patch('analysis_worker._child', None), patch('analysis_worker.subprocess.Popen', return_value=Mock()) as spawn, \
-             patch('analysis_worker.in_download_window', return_value=False), \
+             patch('analysis_worker.analysis_paused_for_schedule', return_value=False), \
              patch.dict('os.environ', {'FUSIONLIVE_PASSWORD': 'test-secret', 'FUSIONLIVE_USERNAME': 'test-user'}):
             ensure_background_worker(self.base, self.database)
             self.assertNotIn('FUSIONLIVE_PASSWORD', spawn.call_args.kwargs['env'])
@@ -342,7 +502,18 @@ class WorkerTests(unittest.TestCase):
         self.assertFalse(any(t.name=='analysis-progress' and t.is_alive() for t in threading.enumerate()))
 
 
+class AnalysisScheduleDefaultsTests(unittest.TestCase):
+    def test_download_window_exclusion_is_enabled_by_default(self):
+        from analysis_worker import PAUSE_ANALYSIS_DURING_DOWNLOAD_WINDOW
+        self.assertTrue(PAUSE_ANALYSIS_DURING_DOWNLOAD_WINDOW)
+
+
 class DownloadWindowTests(unittest.TestCase):
+    def setUp(self):
+        guard = patch('analysis_worker.PAUSE_ANALYSIS_DURING_DOWNLOAD_WINDOW', True)
+        guard.start()
+        self.addCleanup(guard.stop)
+
     def at(self, hour, minute=0):
         return datetime(2026, 10, 31, hour, minute, tzinfo=timezone(timedelta(hours=8)))
 
@@ -354,11 +525,71 @@ class DownloadWindowTests(unittest.TestCase):
                 self.assertEqual(in_download_window(self.at(hour, minute)), expected)
                 self.assertEqual(in_download_window(self.at(hour, minute).astimezone(timezone.utc)), expected)
 
+    def test_analysis_follows_briefing_time_and_reloads_settings(self):
+        from analysis_worker import analysis_paused_for_schedule
+        from push_settings import DEFAULT, save_settings
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder)
+            for send_time in ('11:00', '12:15'):
+                save_settings({**DEFAULT, 'briefing_send_time_beijing': send_time,
+                               'text_send_time_beijing': '10:45'}, base)
+                hour, minute = map(int, send_time.split(':'))
+                boundary = self.at(hour, minute)
+                for at, paused in ((boundary - timedelta(seconds=1), True),
+                                   (boundary, False), (self.at(0), True), (self.at(23, 59), False)):
+                    with self.subTest(send_time=send_time, at=at):
+                        self.assertEqual(analysis_paused_for_schedule(base, at), paused)
+                        self.assertEqual(analysis_paused_for_schedule(base, at.astimezone(timezone.utc)), paused)
+
+    def test_download_hook_waits_after_download_window_until_briefing(self):
+        from push_settings import DEFAULT, save_settings
+        with tempfile.TemporaryDirectory() as folder, \
+             patch('analysis_worker._child', None), \
+             patch('analysis_worker.subprocess.Popen') as spawn:
+            base = Path(folder)
+            save_settings({**DEFAULT, 'briefing_send_time_beijing': '12:00'}, base)
+            for at in (self.at(10, 30), self.at(11, 59)):
+                with patch('analysis_worker.now', return_value=at):
+                    notify_download_completed(base, base/'runtime/ledger.sqlite3')
+            spawn.assert_not_called()
+            with patch('analysis_worker.now', return_value=self.at(12)):
+                notify_download_completed(base, base/'runtime/ledger.sqlite3')
+            spawn.assert_called_once()
+
     def test_download_hook_does_not_spawn_during_download_window(self):
         with patch('analysis_worker.now', return_value=self.at(9)), \
              patch('analysis_worker.subprocess.Popen') as spawn:
             notify_download_completed(Path('unused'), Path('unused.db'))
             spawn.assert_not_called()
+
+    def test_disabled_gate_allows_download_hook_during_download_window(self):
+        with tempfile.TemporaryDirectory() as folder, \
+             patch('analysis_worker.PAUSE_ANALYSIS_DURING_DOWNLOAD_WINDOW', False), \
+             patch('analysis_worker.now', return_value=self.at(9)), \
+             patch('analysis_worker._child', None), \
+             patch('analysis_worker.subprocess.Popen') as spawn:
+            base = Path(folder)
+            notify_download_completed(base, base / 'runtime/ledger.sqlite3')
+            spawn.assert_called_once()
+
+    def test_disabled_gate_runs_queue_and_exports_during_download_window(self):
+        from analysis_worker import main, in_download_window
+        queue = Mock()
+        queue.counts.return_value = {'done': 1}
+        queue.process_next.side_effect = [True, False]
+        with tempfile.TemporaryDirectory() as folder, \
+             patch('analysis_worker.PAUSE_ANALYSIS_DURING_DOWNLOAD_WINDOW', False), \
+             patch('analysis_worker.now', return_value=self.at(9)), \
+             patch('analysis_worker.AnalysisQueue', return_value=queue), \
+             patch('analysis_worker.cached_snapshot', return_value=({}, {'weld_table_file': 'fixture.csv', 'welds': []}, None)) as snapshot:
+            base = Path(folder)
+            self.assertTrue(in_download_window())
+            self.assertEqual(main(['--database', str(base/'runtime/ledger.sqlite3'),
+                                   '--base-dir', str(base)]), 0)
+            queue.discover_if_changed.assert_called_once()
+            self.assertEqual(queue.process_next.call_count, 2)
+            snapshot.assert_called_once()
+            queue.close.assert_called_once_with(defer_exports=False)
 
     def test_migration_still_blocks_original_file_analysis_outside_download_window(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -389,12 +620,12 @@ class DownloadWindowTests(unittest.TestCase):
 
     def test_running_worker_finishes_current_task_then_exits_without_exports(self):
         from analysis_worker import main
-        clock = [self.at(1, 59)]
+        clock = [self.at(23, 59)]
         queue = Mock()
         queue.counts.return_value = {'done': 1}
 
         def finish_current():
-            clock[0] = self.at(2)
+            clock[0] = self.at(0)
             return True
 
         queue.process_next.side_effect = finish_current

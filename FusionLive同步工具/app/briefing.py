@@ -1,6 +1,6 @@
 """Offline Excel briefings and image handoff. No FusionLive or credential imports."""
 
-from app_paths import HOME, CODE
+from paths import HOME, CODE
 import argparse
 from contextlib import closing, contextmanager
 from copy import copy
@@ -21,7 +21,7 @@ from openpyxl.cell.cell import MergedCell
 from openpyxl.cell.cell import MergedCell
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from PIL import Image, ImageDraw, ImageFont
-from output_paths import check_output_directory
+from paths import check_output_directory
 from business_type import unit_names
 
 LOCAL = timezone(timedelta(hours=8))
@@ -771,25 +771,13 @@ def main(argv=None):
     parser.add_argument('--supplement', type=Path, help='填写后的补充模板')
     parser.add_argument('--render', type=Path, help='将已编辑的简报Excel重新转图片')
     parser.add_argument('--title', help='覆盖启动设置中保存的简报标题')
-    parser.add_argument('--daily-text', action='store_true', help='定时任务同时刷新当天下载日报')
+    parser.add_argument('--daily-text', action='store_true', help='兼容旧参数；文字日报改为发送时实时生成')
     parser.add_argument('--date', default=datetime.now(LOCAL).date().isoformat())
     parser.add_argument('--files-root', type=Path, help='可选：分析工具外的独立样本目录；正常使用自动定位工具downloads目录及台账路径，无需填写')
     parser.add_argument('--project', default='本地项目', help='手动指定目录对应的项目编号')
     parser.add_argument('--prefab-rule', choices=['none', 'no-small', 'all'], default='none', help='预制/安装分类规则；默认不估算')
     args = parser.parse_args(argv)
     datetime.strptime(args.date, '%Y-%m-%d')
-    if args.daily_text and args.database.is_file() and args.date == datetime.now(LOCAL).date().isoformat():
-        # This runs in the cancellable report child, never in the scheduler thread.
-        from ledger import Ledger
-        from reporting import try_write_push_text
-        try:
-            ledger = Ledger(args.database, base_dir=args.database.resolve().parent.parent)
-            try:
-                try_write_push_text(ledger)
-            finally:
-                ledger.close()
-        except Exception as exc:
-            print('当天下载日报刷新失败，继续生成管道简报：' + type(exc).__name__, flush=True)
     state = generate(args.database, args.output or HOME / 'logs' / args.date / '管道简报',
                      args.supplement, args.title, args.date, args.render,
                      files_root=args.files_root, project=args.project, prefab_rule=args.prefab_rule, use_cache=True)

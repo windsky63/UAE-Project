@@ -1,6 +1,6 @@
 """Catalogue snapshots, resumable association checks and change reconciliation."""
 
-from app_paths import HOME, CODE
+from paths import HOME, CODE
 import hashlib
 from contextlib import closing
 import json
@@ -22,6 +22,36 @@ CONTENT_FIELDS = ('id', 'filename', 'fileName', 'contentSize', 'revision', 'vers
                   'creationDate', 'uploadDate', 'revisionDate', 'modifiedDate', 'updatedDate',
                   'lastModified', 'lastModifiedDate', 'modificationDate', 'updatedAt', 'modifiedAt',
                   'contentId', 'contentVersionId', 'contentChecksum', 'checksum', 'md5', 'sha256', 'etag', 'eTag', 'hasContent')
+
+
+def same_linked_version(before, after):
+    """A virtual link's creation time describes its entry, not new file bytes.
+
+    Require an explicit, identical remote version and a different link context.
+    All other content evidence must agree; timestamp changes within one entry
+    and actual version/size/checksum changes still invalidate downloaded bytes.
+    """
+    if any(item.get('isVirtualLink') != 'true' for item in (before, after)):
+        return False
+    if any(not before.get(key) or before.get(key) != after.get(key)
+           for key in ('id', 'firstVersionId', 'versionLabel')):
+        return False
+    context = ('virtualLinkId', 'ownerId', 'isSourceDocument')
+    if all(before.get(key) == after.get(key) for key in context):
+        return False
+    return all(before.get(key) == after.get(key) for key in CONTENT_FIELDS if key != 'creationDate')
+
+
+def source_file_identity(item):
+    """Stable remote version family; never merge different attachment members."""
+    item = dict(item)
+    data = json.loads(item.get('metadata') or '{}')
+    first = data.get('firstVersionId')
+    if not first:
+        return None
+    relation = item.get('relation') or data.get('relation') or ''
+    member = '' if relation == 'Document' else str(item.get('filename') or data.get('filename') or '').casefold()
+    return json.dumps([item['project'], str(first), relation, member], ensure_ascii=False, separators=(',', ':'))
 
 
 class InventoryMixin:
@@ -136,8 +166,9 @@ class InventoryMixin:
                                 (project, child['id'], folder['id'], child['text'], folder['path'] + '/' + child['text'], self.snapshot_id))
             self.db.execute("UPDATE folders SET tree_state='done',error=NULL WHERE project=? AND id=?", (project, folder['id']))
 
-    def save_page(self, project, folder_id, total, records, next_start, done):
-        with self.db:
+    def save_page(self, project, folder_id, total, records, next_start, done, *, transaction=True):
+        from contextlib import nullcontext
+        with self.db if transaction else nullcontext():
             start = next_start - len(records)
             ids = [item.get('id') for item in records]
             if start < 0 or next_start > total or any(not identifier for identifier in ids) or len(ids) != len(set(ids)):
@@ -172,12 +203,26 @@ class InventoryMixin:
                             (total, next_start, 'done' if done else 'pending', project, folder_id))
             self.db.execute('INSERT OR REPLACE INTO scan_pages VALUES(?,?,?,?)', (project, folder_id, start, json.dumps(ids)))
 
+    def replace_folder_records(self, project, folder_id, records):
+        """Commit a fully fetched folder atomically; retain unchanged checks/files."""
+        visible = {row['id'] for row in self.all('SELECT id FROM documents WHERE project=? AND folder_id=? AND active=1',
+                                                (project, folder_id))}
+        received = {record['id'] for record in records}
+        with self.db:
+            self.db.execute('DELETE FROM scan_pages WHERE project=? AND folder_id=?', (project, folder_id))
+            self.save_page(project, folder_id, len(records), records, len(records), True, transaction=False)
+            for identifier in sorted(visible - received):
+                self.change(project, 'document', identifier, folder_id, 'not_visible')
+                self.db.execute('UPDATE documents SET active=0 WHERE project=? AND folder_id=? AND id=?',
+                                (project, folder_id, identifier))
+            self.update_file_visibility(project)
+
     def finish_catalogue(self, project):
         pending = self.one("SELECT COUNT(*) n FROM folders WHERE project=? AND snapshot=? AND (tree_state!='done' OR list_state!='done')", (project, self.snapshot_id))['n']
         if pending:
             return False
         for folder in self.all('SELECT * FROM folders WHERE project=? AND snapshot=? AND parent IS NOT NULL', (project, self.snapshot_id)):
-            count = self.one('SELECT COUNT(*) n FROM documents WHERE project=? AND folder_id=? AND snapshot=?', (project, folder['id'], self.snapshot_id))['n']
+            count = self.one('SELECT COUNT(*) n FROM documents WHERE project=? AND folder_id=? AND snapshot=? AND active=1', (project, folder['id'], self.snapshot_id))['n']
             if count != folder['total']:
                 raise RuntimeError('目录清单条数与平台总数不一致，停止而不删除旧任务。')
         with self.db:
@@ -189,11 +234,15 @@ class InventoryMixin:
             self.update_file_visibility(project)
         return True
 
-    def update_file_visibility(self, project):
-        self.db.execute('''UPDATE files SET active=EXISTS(SELECT 1 FROM document_files x JOIN documents d
+    def update_file_visibility(self, project, file_ids=None):
+        sql = '''UPDATE files SET active=EXISTS(SELECT 1 FROM document_files x JOIN documents d
           ON d.project=x.project AND d.id=x.document_id AND d.folder_id=x.folder_id
           WHERE x.project=files.project AND x.file_id=files.id AND x.active=1 AND d.active=1)
-          WHERE project=?''', (project,))
+          WHERE project=?'''
+        if file_ids is None:
+            self.db.execute(sql, (project,))
+        else:
+            self.db.executemany(sql+' AND id=?', ((project, identifier) for identifier in file_ids))
 
     def save_related(self, document, items, placeholder=False):
         if not placeholder and not items and json.loads(document['metadata']).get('hasContent') == 'true':
@@ -202,7 +251,6 @@ class InventoryMixin:
         keys = (project, document['id'], document['folder_id'])
         with self.db:
             previous_ids = {row['file_id'] for row in self.all('SELECT file_id FROM document_files WHERE project=? AND document_id=? AND folder_id=? AND active=1', keys)}
-            self.db.execute('UPDATE document_files SET active=0 WHERE project=? AND document_id=? AND folder_id=?', keys)
             current = set()
             for item in items:
                 if not item.get('id') or not item.get('filename'):
@@ -210,8 +258,9 @@ class InventoryMixin:
                 current.add(item['id'])
                 old = self.one('SELECT * FROM files WHERE project=? AND id=?', (project, item['id']))
                 raw_signature = fingerprint(item, CONTENT_FIELDS)
-                old_raw_signature = fingerprint(json.loads(old['metadata']), CONTENT_FIELDS) if old else None
-                if old and raw_signature == old_raw_signature:
+                old_metadata = json.loads(old['metadata']) if old else {}
+                old_raw_signature = fingerprint(old_metadata, CONTENT_FIELDS) if old else None
+                if old and (raw_signature == old_raw_signature or same_linked_version(old_metadata, item)):
                     signature = (fingerprint({'content': raw_signature, 'parent': document['content_fingerprint']})
                                  if document['content_changed'] and item['id'] == document['id'] else old['fingerprint'])
                 else:
@@ -228,7 +277,13 @@ class InventoryMixin:
                 else:
                     status = 'pending' if not old or changed or old['status'] == 'restricted' else old['status']
                 if not old or changed:
-                    self.change(project, 'file', item['id'], document['folder_id'], 'updated' if old else 'added', {'filename': item['filename']})
+                    prior_metadata = json.loads(old['metadata']) if old else {}
+                    self.change(project, 'file', item['id'], document['folder_id'], 'updated' if old else 'added',
+                        {'filename': item['filename'], 'parent_document_id': document['id'],
+                         'previous_fingerprint': old['fingerprint'] if old else None,
+                         'fingerprint': signature,
+                         'changed_fields': [k for k in CONTENT_FIELDS if prior_metadata.get(k) != item.get(k)],
+                         'parent_content_changed': bool(document['content_changed'] and item['id']==document['id'])})
                 if item['id'] not in previous_ids:
                     self.change(project, 'association', item['id'], document['folder_id'], 'added', {'document_id': document['id']})
                 self.db.execute('''INSERT INTO files(project,id,document_id,folder_id,filename,revision,relation,size,metadata,status,
@@ -243,14 +298,18 @@ class InventoryMixin:
                                  item.get('relationshipType') or 'Document', int(item.get('contentSize') or 0), json.dumps(item, ensure_ascii=False),
                                  status, signature, 'updated' if changed else 'added' if not old else 'existing', now().isoformat(),
                                  changed, changed, changed, changed or bool(old and old['status'] == 'restricted'), changed))
-                self.db.execute('INSERT OR REPLACE INTO document_files VALUES(?,?,?,?,1)', (*keys, item['id']))
+                self.db.execute('''INSERT INTO document_files VALUES(?,?,?,?,1)
+                  ON CONFLICT(project,document_id,folder_id,file_id) DO UPDATE SET active=1
+                  WHERE document_files.active!=1''', (*keys, item['id']))
                 if changed:
                     self.db.execute('UPDATE files SET downloaded_at=NULL,download_date_source=NULL,target_path=NULL,retryable=1 WHERE project=? AND id=?', (project, item['id']))
             for removed in previous_ids - current:
+                self.db.execute('''UPDATE document_files SET active=0
+                  WHERE project=? AND document_id=? AND folder_id=? AND file_id=?''', (*keys, removed))
                 self.change(project, 'association', removed, document['folder_id'], 'not_visible', {'document_id': document['id']})
             self.db.execute('UPDATE documents SET related_state=?,checked_cycle=?,content_changed=0,error=NULL WHERE project=? AND id=? AND folder_id=?',
                             ('no_content' if placeholder else 'done', self.cycle, *keys))
-            self.update_file_visibility(project)
+            self.update_file_visibility(project, previous_ids | current)
 
     def finish_refresh(self, project):
         pending = self.one("SELECT COUNT(*) n FROM documents WHERE project=? AND active=1 AND (checked_cycle<? OR related_state IN ('pending','failed'))", (project, self.cycle))['n']

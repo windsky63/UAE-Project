@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from app_paths import HOME, CODE
+from paths import HOME, CODE
 
 import argparse
 import json

@@ -45,9 +45,12 @@ def main():
         finally:
             state.close()
         return
-    from .desktop_lock import DesktopLock
+    from .state import DesktopLock
     lock = None
     state = spool = listener = None
+    from .operational_logging import configure
+    import logging
+    configure(config)
     try:
         lock = DesktopLock(str(Path(config.database_cache) / 'bridge.lock'))
         stop_path.unlink(missing_ok=True)
@@ -73,7 +76,7 @@ def main():
             try:
                 listener.tick()
             except Exception as exc:
-                print('Listener cycle failed: ' + type(exc).__name__, flush=True)
+                logging.getLogger('wechat_local').exception('Listener cycle failed; retry next cycle')
                 if args.once:
                     raise
             if args.once:

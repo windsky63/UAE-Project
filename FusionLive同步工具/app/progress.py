@@ -1,6 +1,6 @@
 """Explicit phase and record counters for the resident console."""
 
-from app_paths import HOME, CODE
+from paths import HOME, CODE
 import json
 import time
 
@@ -14,16 +14,20 @@ def emit(phase, **values):
 class DownloadProgress:
     """Sample transferred bytes, while keeping verified completion separate from partials."""
     def __init__(self, ledger, project):
-        row = ledger.one('''SELECT COUNT(*) total,COALESCE(SUM(size),0) total_bytes,
-          COALESCE(SUM(status='done'),0) done,COALESCE(SUM(CASE WHEN status='done' THEN size ELSE 0 END),0) done_bytes
-          FROM files WHERE project=? AND active=1''', (project,))
-        self.total, self.total_bytes = row['total'], row['total_bytes']
-        self.done, self.done_bytes = row['done'], row['done_bytes']
         self.downloads = self.wire_bytes = self.current_bytes = self.current_total = 0
         self.current_file = ''
         self.started = self.sample_time = time.monotonic()
         self.sample_bytes = 0
         self.recent_rate = 0
+        self.refresh(ledger, project)
+
+    def refresh(self, ledger, project):
+        """Refresh discovered totals between batches without resetting transfers."""
+        row = ledger.one('''SELECT COUNT(*) total,COALESCE(SUM(size),0) total_bytes,
+          COALESCE(SUM(status='done'),0) done,COALESCE(SUM(CASE WHEN status='done' THEN size ELSE 0 END),0) done_bytes
+          FROM files WHERE project=? AND active=1''', (project,))
+        self.total, self.total_bytes = row['total'], row['total_bytes']
+        self.done, self.done_bytes = row['done'], row['done_bytes']
         self.publish(force=True)
 
     def begin(self, item):
@@ -36,6 +40,11 @@ class DownloadProgress:
         self.wire_bytes += max(0, received - self.current_bytes)
         self.current_bytes, self.current_total = received, expected
         self.publish()
+
+    def resume(self, received, expected):
+        """Restored disk bytes are progress, not traffic received in this run."""
+        self.current_bytes, self.current_total = received, expected
+        self.publish(force=True)
 
     def complete(self, size):
         self.wire_bytes += max(0, size - self.current_bytes)
@@ -77,7 +86,17 @@ class Progress:
     def accept(self, line):
         if not line.startswith(PREFIX):
             return False
-        self.values.update(json.loads(line[len(PREFIX):]))
+        incoming = json.loads(line[len(PREFIX):])
+        if not isinstance(incoming,dict) or ('phase' in incoming and not isinstance(incoming['phase'],str)):
+            raise ValueError('进度事件必须为对象；phase存在时必须为字符串')
+        if 'phase' in incoming and incoming['phase'] != self.values.get('phase'):
+            # Counters belong to a phase; stale current filenames and speeds
+            # must never appear as evidence that the next stage is progressing.
+            for key in list(self.values):
+                if (key.startswith(('download_','current_','associated_','recent_','average_'))
+                        or key in ('transfer_bytes','processed','elapsed')):
+                    self.values.pop(key,None)
+        self.values.update(incoming)
         self.last_update = time.monotonic()
         return True
 
@@ -91,13 +110,12 @@ class Progress:
         if v['phase'] == '文件下载' and 'download_total_files' in v:
             total, done = v['download_total_bytes'], v['download_done_bytes']
             percent = 100 * done / total if total else 0
-            result += (f'；累计完成 {v["download_done_files"]}/{v["download_total_files"]} 个'
+            result += (f'；当前有效版本完成 {v["download_done_files"]}/{v["download_total_files"]} 个'
                        f'；已完成 {done/1e9:.2f}/{total/1e9:.2f} GB（{percent:.1f}%）')
             recent = v.get('recent_bytes_per_second', 0) if time.monotonic()-self.last_update < 15 else 0
             result += f'；近期 {recent/1e6:.2f} MB/s；本次传输均速 {v.get("average_bytes_per_second",0)/1e6:.2f} MB/s'
             if v.get('current_file'):
                 name = v['current_file']
-                name = name if len(name) <= 65 else name[:30] + '…' + name[-30:]
                 result += f'；当前 {name} {v["current_bytes"]/1e6:.1f}/{v["current_total"]/1e6:.1f} MB'
         if 'associated_total' in v:
             result += f'；关联已核对 {v["associated_done"]}/{v["associated_total"]}'

@@ -82,6 +82,46 @@ class StagedFixture:
         self.ledger = Ledger(self.base / 'runtime' / 'ledger.sqlite3', base_dir=self.base)
 
 class StagedWorkflowTests(StagedFixture, unittest.TestCase):
+    def test_idle_restart_publishes_verified_staged_files_without_redownload(self):
+        self.assertEqual(self.run_stage(), ('done', 0))
+        row = self.ledger.one("SELECT * FROM files WHERE id='v1'")
+        original = self.base / row['path']
+        staged = self.base / 'runtime/download_ready/v1/content'
+        staged.parent.mkdir(parents=True)
+        original.replace(staged)
+        with self.ledger.db:
+            self.ledger.db.execute("UPDATE files SET path=? WHERE id='v1'", (staged.relative_to(self.base).as_posix(),))
+        self.assertFalse((self.base / 'runtime/layout.pending').exists())
+        self.reopen()
+        self.events.clear()
+        self.assertEqual(self.run_stage(), ('done', 0))
+        self.assertEqual(self.events, [])
+        self.assertTrue(original.is_file())
+        self.assertFalse(staged.exists())
+        self.assertEqual(self.ledger.one("SELECT path FROM files WHERE id='v1'")['path'], row['path'])
+
+    def test_staged_files_publish_before_credentials_or_network_are_available(self):
+        self.run_stage()
+        row = self.ledger.one("SELECT * FROM files WHERE id='v1'")
+        original = self.base / row['path']
+        staged = self.base / 'runtime/download_ready/v1/content'
+        staged.parent.mkdir(parents=True)
+        original.replace(staged)
+        with self.ledger.db:
+            self.ledger.db.execute("UPDATE files SET path=? WHERE id='v1'", (str(staged),))
+        def unavailable():
+            self.assertTrue(original.is_file())
+            self.assertFalse(staged.exists())
+            raise RuntimeError('credentials unavailable')
+        import sync
+        with patch('sync.RunLock', return_value=nullcontext()), patch('sync.Ledger', return_value=self.ledger), \
+             patch.object(self.ledger, 'close'), patch('sync.RUNTIME', self.base / 'runtime'), \
+             patch('sync.threading.Thread'), patch('sync.signal.signal'), \
+             patch('sync.get_credentials', side_effect=unavailable), patch.dict('os.environ', {'FUSIONLIVE_SCHEDULED': '0'}), \
+             patch('sync.FusionClient', side_effect=AssertionError('network forbidden')), redirect_stdout(io.StringIO()):
+            with self.assertRaisesRegex(RuntimeError, 'credentials unavailable'):
+                sync.main(['auto'])
+
     def test_initial_associations_resume_then_bulk_skips_all_inventory_across_days(self):
         self.assertEqual(self.run_stage(max_associations=1), ('inventory_incomplete', 2))
         self.assertEqual(self.state()['phase'], 'associations')
@@ -142,7 +182,8 @@ class StagedWorkflowTests(StagedFixture, unittest.TestCase):
         with patch.object(self.client, 'download', side_effect=RuntimeError('failed')), patch('sync.time.sleep'):
             self.assertEqual(self.run_stage(), ('download_pending', 2))
         self.assertEqual(self.state()['stage'], 'bulk_download')
-        self.assertEqual(self.ledger.one("SELECT COUNT(*) n FROM files WHERE status='failed' AND attempts=3")['n'], 2)
+        # Each failed file yields to the remaining queue and retries next run.
+        self.assertEqual(self.ledger.one("SELECT COUNT(*) n FROM files WHERE status='failed' AND attempts=1")['n'], 2)
 
     def test_deadline_keeps_bulk_stage_and_next_day_does_not_rescan(self):
         self.run_stage('scan')
@@ -218,7 +259,7 @@ class StagedWorkflowTests(StagedFixture, unittest.TestCase):
         self.assertEqual(self.state()['phase'], 'associations')
         self.events.clear()
         self.assertEqual(self.run_stage(), ('done', 0))
-        self.assertEqual(self.events, ['related:v2', 'download:v1', 'download:v2'])
+        self.assertEqual(self.events, ['page:0', 'related:v2', 'download:v1', 'download:v2'])
 
     def test_restricted_files_are_reported_and_never_marked_successful(self):
         self.related['v2'][0]['readAccessStatus'] = 'Restricted'
@@ -531,12 +572,14 @@ class DailyInventoryBulkTests(StagedFixture, unittest.TestCase):
         self.assertEqual(self.state()['stage'],'bulk_download')
         from reporting import system_report_stats
         self.assertEqual(system_report_stats(self.ledger,self.at)['owner_new'],{'files':1,'bytes':3})
+        self.assertIn('download:v2',self.events)
+        self.assertNotIn('download:new-attachment',self.events)
         self.events.clear()
         self.reopen()
         self.assertEqual(self.run_stage(),('done',0))
         self.assertEqual(self.events,['download:new-attachment'])
 
-    def test_partial_daily_inventory_resumes_its_round_and_does_not_download_early(self):
+    def test_partial_daily_inventory_resumes_its_round_and_does_not_download_unchecked_files(self):
         self.run_stage('scan')
         self.run_stage(max_files=1)
         self.enable_daily()

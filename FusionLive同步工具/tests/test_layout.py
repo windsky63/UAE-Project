@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 
 import analysis_worker
-from app_paths import HOME,CODE
+from paths import HOME,CODE
 from preflight import REQUIRED_FILES,RELEASE_ID
 
 

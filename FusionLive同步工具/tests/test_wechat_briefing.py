@@ -1,8 +1,9 @@
 """Only fake desktop controls/senders; never log in, download, or send a real message."""
 from datetime import datetime, timezone
-from contextlib import nullcontext
+from contextlib import nullcontext, closing
 import hashlib
 import json
+import sqlite3
 from pathlib import Path
 import tempfile
 import sys
@@ -19,11 +20,132 @@ from wechat_push.uia import WindowsUIASender
 
 
 class BriefingPushTests(unittest.TestCase):
+    def test_text_can_send_before_image_preparation_time_without_prebuilt_text(self):
+        save_settings({**self.settings,'prepare_time_beijing':'10:40',
+                       'text_send_time_beijing':'10:00','briefing_send_time_beijing':'12:00'},self.base)
+        service,factory,send=self.service()
+        service.tick(self.at.replace(hour=9,minute=59))
+        send.assert_not_called()
+        service.tick(self.at.replace(hour=10))
+        send.assert_called_once()
+        factory.assert_not_called()
+        self.assertTrue(send.call_args.args[2]['publish_text'])
+        self.assertFalse(send.call_args.args[2]['publish_briefing'])
+    def test_send_creates_backup_before_desktop_and_retry_reuses_it(self):
+        path=self.folder/'文字发送备份.json'
+        self.assertFalse(path.exists())
+        sender=Mock()
+        def fail_after_check(recipient,text):
+            self.assertTrue(path.is_file())
+            self.assertEqual(json.loads(path.read_text(encoding='utf-8'))['text'],text)
+            raise DeliveryNotSent('known not sent')
+        sender.send.side_effect=fail_after_check
+        first=deliver(self.base,self.marker,self.settings,self.at,lambda:sender)
+        self.assertFalse(first['complete'])
+        frozen=path.read_bytes()
+        original=self.daily_text
+        self.daily_text='new statistics after the failed attempt'
+        sender.send.side_effect=None
+        result=deliver(self.base,self.marker,self.settings,self.at,lambda:sender)
+        self.assertTrue(result['complete'])
+        self.assertEqual(sender.send.call_args.args[1],original)
+        self.assertEqual(path.read_bytes(),frozen)
+
+    def test_corrupt_send_backup_blocks_sender_and_is_not_regenerated(self):
+        path=self.folder/'文字发送备份.json'
+        path.write_text('{"bad":"backup"}',encoding='utf-8')
+        sender=Mock()
+        with self.assertRaisesRegex(DeliveryNotSent,'备份校验失败'):
+            deliver(self.base,self.marker,self.settings,self.at,lambda:sender)
+        sender.send.assert_not_called()
+
+    def test_report_only_ledger_writes_do_not_force_final_report(self):
+        database = self.base/'runtime/ledger.sqlite3'
+        with closing(sqlite3.connect(database)) as db, db:
+            db.execute('CREATE TABLE files(project,id,filename,path,status,bytes,sha256,active)')
+            db.execute("INSERT INTO files VALUES('p','one','one.pdf',NULL,'pending',0,NULL,1)")
+            db.execute('CREATE TABLE report_local_versions(value INTEGER)')
+            db.execute('INSERT INTO report_local_versions VALUES(0)')
+        service, factory, _ = self.service()
+        self.prepare(service)
+        with closing(sqlite3.connect(database)) as db, db:
+            db.execute('UPDATE report_local_versions SET value=1')
+        service.tick(self.at.replace(hour=10, minute=55))
+        factory.assert_called_once()
+        self.assertEqual(service.state['generation_slots']['final']['status'], 'reused')
+
+    def test_successful_draft_is_not_regenerated_each_minute_or_after_restart(self):
+        service, factory, _ = self.service()
+        self.prepare(service)
+        for minute in range(41, 55):
+            service.tick(self.at.replace(hour=10, minute=minute))
+        factory.assert_called_once()
+        restarted, again, _ = self.service()
+        restarted.tick(self.at.replace(hour=10, minute=54))
+        restarted.tick(self.at.replace(hour=10, minute=55))
+        again.assert_not_called()
+        self.assertEqual(restarted.state['generation_slots']['final']['status'], 'reused')
+
+    def test_changed_analysis_gets_only_one_final_update(self):
+        service, factory, _ = self.service()
+        self.prepare(service)
+        database = self.base/'runtime/file_analysis/queue.sqlite3'
+        database.parent.mkdir(parents=True)
+        with closing(sqlite3.connect(database)) as db, db:
+            db.execute('CREATE TABLE analysis_exports(name TEXT PRIMARY KEY,revision INTEGER)')
+            db.execute("INSERT INTO analysis_exports VALUES('results',1)")
+        service.tick(self.at.replace(hour=10, minute=55))
+        service.tick(self.at.replace(hour=10, minute=55, second=2))
+        self.assertEqual(factory.call_count, 2)
+        with closing(sqlite3.connect(database)) as db, db:
+            db.execute("UPDATE analysis_exports SET revision=2 WHERE name='results'")
+        for minute in (56, 57, 58, 59):
+            service.tick(self.at.replace(hour=10, minute=minute))
+        self.assertEqual(factory.call_count, 2)
+        self.assertEqual(service.state['generation_slots']['final']['status'], 'complete')
+
+    def test_export_metadata_writes_do_not_force_final_report(self):
+        database = self.base/'runtime/file_analysis/queue.sqlite3'
+        database.parent.mkdir(parents=True)
+        with closing(sqlite3.connect(database)) as db, db:
+            db.execute('CREATE TABLE analysis_exports(name TEXT PRIMARY KEY,revision INTEGER)')
+            db.executemany('INSERT INTO analysis_exports VALUES(?,?)', [('results',1),('ledger',0)])
+        service, factory, _ = self.service()
+        self.prepare(service)
+        with closing(sqlite3.connect(database)) as db, db:
+            db.execute("UPDATE analysis_exports SET revision=1 WHERE name='ledger'")
+        service.tick(self.at.replace(hour=10, minute=55))
+        factory.assert_called_once()
+        self.assertEqual(service.state['generation_slots']['final']['status'], 'reused')
+
+    def test_text_is_not_pre_generated_each_minute(self):
+        service, _, _ = self.service()
+        self.prepare(service)
+        path = self.folder/'微信推送文快照.json'
+        self.assertFalse(path.exists())
+        service.tick(self.at.replace(hour=10, minute=41))
+        self.assertFalse(path.exists())
+        self.assertFalse((self.folder/'文字发送备份.json').exists())
+
+    def test_generation_failures_have_bounded_attempts_per_slot(self):
+        service, factory, _ = self.service()
+        factory.return_value.returncode = 1
+        for minute in range(40, 55):
+            service.tick(self.at.replace(hour=10, minute=minute))
+            service.tick(self.at.replace(hour=10, minute=minute, second=2))
+        self.assertEqual(factory.call_count, 3)
+        self.assertEqual(service.state['generation_slots']['draft']['attempts'], 3)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.base = Path(self.temp.name)
         self.at = datetime(2026, 10, 23, 11, tzinfo=LOCAL)
+        self.daily_text='fixture live daily'
+        self.daily_ready=True
+        self.live_source=patch('file_inventory.read_daily_snapshot',side_effect=self.snapshot_daily)
+        self.live_source.start()
+        self.addCleanup(self.live_source.stop)
         self.settings = {**DEFAULT, 'recipients': ['示例接收会话']}
         save_settings(self.settings, self.base)
         self.folder = self.base / 'logs/2026-10-23/管道简报'
@@ -37,6 +159,24 @@ class BriefingPushTests(unittest.TestCase):
         self.socket = patch('socket.socket', side_effect=AssertionError('network forbidden'))
         self.socket.start()
         self.addCleanup(self.socket.stop)
+
+    def live_daily(self, base, at=None, *, require_ready=False):
+        if require_ready and not self.daily_ready:
+            raise ValueError('实时日报尚未就绪')
+        return self.daily_text,dict(date='2026-10-23',generated_at=self.at.isoformat(),ready=self.daily_ready)
+
+    def snapshot_daily(self, base, day=None, *, require_ready=False):
+        text,state=self.live_daily(base,require_ready=require_ready)
+        return dict(state,text=text)
+
+    def test_daily_snapshot_generated_once_and_reused_after_restart(self):
+        service,_,_=self.service()
+        with patch('reporting.generate_daily_snapshot',return_value=dict(ready=True,generated_at=self.at.isoformat())) as generate:
+            self.prepare(service)
+            service.tick(self.at.replace(hour=10,minute=50))
+            restarted,_,_=self.service()
+            restarted.tick(self.at.replace(hour=10,minute=51))
+            generate.assert_called_once()
 
     def write_marker(self):
         self.marker.write_text(json.dumps(self.state, ensure_ascii=False), encoding='utf-8')
@@ -83,6 +223,61 @@ class BriefingPushTests(unittest.TestCase):
         self.addCleanup(service.close)
         return service, factory, send
 
+    def test_independent_text_and_image_times_survive_restart_without_duplicates(self):
+        save_settings({**self.settings,'text_send_time_beijing':'11:00','briefing_send_time_beijing':'12:00'},self.base)
+        service,_,send=self.service()
+        self.prepare(service)
+        service.tick(self.at)
+        self.assertEqual(send.call_count,1)
+        self.assertTrue(send.call_args.args[2]['publish_text'])
+        self.assertFalse(send.call_args.args[2]['publish_briefing'])
+        service.tick(self.at.replace(hour=12))
+        self.assertEqual(send.call_count,2)
+        self.assertFalse(send.call_args.args[2]['publish_text'])
+        self.assertTrue(send.call_args.args[2]['publish_briefing'])
+        restarted,_,again=self.service()
+        restarted.tick(self.at.replace(hour=12,minute=1))
+        again.assert_not_called()
+
+    def test_images_can_be_sent_before_text_and_time_changes_are_read_live(self):
+        save_settings({**self.settings,'text_send_time_beijing':'12:00','briefing_send_time_beijing':'11:00'},self.base)
+        service,_,send=self.service()
+        self.prepare(service)
+        service.tick(self.at)
+        self.assertEqual(send.call_count,1)
+        self.assertTrue(send.call_args.args[2]['publish_briefing'])
+        saved=load_settings(self.base)
+        save_settings({**saved,'text_send_time_beijing':'12:30'},self.base)
+        service.tick(self.at.replace(hour=12))
+        self.assertEqual(send.call_count,1)
+        service.tick(self.at.replace(hour=12,minute=30))
+        self.assertEqual(send.call_count,2)
+        self.assertTrue(send.call_args.args[2]['publish_text'])
+        self.assertFalse(send.call_args.args[2]['publish_briefing'])
+
+    def test_legacy_custom_send_time_is_inherited_by_both_publications(self):
+        save_settings({**self.settings,'send_time_beijing':'13:20'},self.base)
+        saved=load_settings(self.base)
+        self.assertEqual(saved['text_send_time_beijing'],'13:20')
+        self.assertEqual(saved['briefing_send_time_beijing'],'13:20')
+
+    def test_invalid_independent_time_is_rejected_before_overwriting_configuration(self):
+        path=self.base/'runtime/wechat_push.json'
+        before=path.read_bytes()
+        with self.assertRaises(ValueError):
+            save_settings({**self.settings,'text_send_time_beijing':'25:00'},self.base)
+        self.assertEqual(path.read_bytes(),before)
+
+    def test_text_uncertain_delivery_is_not_retried_at_its_new_time(self):
+        save_settings({**self.settings,'text_send_time_beijing':'11:00','briefing_send_time_beijing':'12:00'},self.base)
+        service,_,send=self.service(dict(complete=False,submitted=0,failed=0,uncertain=1))
+        self.prepare(service)
+        service.tick(self.at)
+        self.assertEqual(service.state['text_publication']['phase'],'uncertain')
+        save_settings({**load_settings(self.base),'text_send_time_beijing':'11:30'},self.base)
+        service.tick(self.at.replace(minute=30))
+        self.assertEqual(send.call_count,1)
+
     def prepare(self, service):
         service.tick(self.at.replace(hour=10, minute=40))
         service.tick(self.at.replace(hour=10, minute=40, second=2))
@@ -127,7 +322,7 @@ class BriefingPushTests(unittest.TestCase):
         send.side_effect = lambda *args, **kwargs: deliver(*args, **kwargs, sender_factory=lambda: sender)
         self.prepare(service)
         factory.assert_called_once()
-        self.assertTrue((self.folder / '微信推送文快照.json').is_file())
+        self.assertFalse((self.folder / '微信推送文快照.json').exists())
         service.tick(self.at)
         self.assertEqual(service.state['phase'], 'submitted')
         sender.send.assert_called_once()
@@ -169,7 +364,7 @@ class BriefingPushTests(unittest.TestCase):
         self.assertEqual(service.state['phase'], 'submitted')
         frozen = json.loads(send.call_args.args[1].read_text(encoding='utf-8'))
         self.assertEqual(frozen['images'], [])
-        self.assertTrue(frozen['wechat_push_text'])
+        self.assertNotIn('wechat_push_text',frozen)
 
     def test_known_not_sent_retries_bounded_and_uncertain_stops(self):
         service, _, send = self.service()
@@ -200,13 +395,25 @@ class BriefingPushTests(unittest.TestCase):
         command = factory.call_args.args[0]
         self.assertEqual(command[command.index('--title') + 1], '项目管道简报')
 
-    def test_offline_analysis_starts_at_any_hour_even_after_publication_finishes(self):
+    def test_offline_analysis_waits_until_briefing_send_time_even_after_publication_finishes(self):
         (self.base / 'runtime/ledger.sqlite3').touch()
         service, _, _ = self.service()
         service.state = dict(date='2026-10-23', phase='submitted')
         for hour in (1, 12, 23):
             service.tick(self.at.replace(hour=hour))
-        self.assertEqual(service.analysis_start.call_count, 3)
+        self.assertEqual(service.analysis_start.call_count, 2)
+
+    def test_analysis_dispatch_follows_independent_briefing_time(self):
+        save_settings({**self.settings, 'text_send_time_beijing': '11:00',
+                       'briefing_send_time_beijing': '12:15'}, self.base)
+        (self.base / 'runtime/ledger.sqlite3').touch()
+        service, _, _ = self.service()
+        service.state = dict(date='2026-10-23', phase='submitted')
+        for hour, minute in ((10, 30), (11, 0), (12, 14)):
+            service.tick(self.at.replace(hour=hour, minute=minute))
+        service.analysis_start.assert_not_called()
+        service.tick(self.at.replace(hour=12, minute=15))
+        service.analysis_start.assert_called_once()
 
     def test_independent_publication_switch_combinations(self):
         for text, image in ((False, False), (True, False), (False, True), (True, True)):
@@ -291,13 +498,13 @@ class BriefingPushTests(unittest.TestCase):
         service, factory, send = self.service()
         with patch('briefing.generate_pending_notice', side_effect=OSError('image unavailable')):
             service.tick(self.at.replace(hour=10, minute=40))
-        factory.assert_called_once()
-        self.assertIn('image unavailable', (self.folder / '定时生成.log').read_text(encoding='utf-8'))
+        factory.assert_not_called()
+        self.assertFalse((self.folder/'文字发送备份.json').exists())
         service.tick(self.at)
         send.assert_called_once()
         frozen = json.loads(send.call_args.args[1].read_text(encoding='utf-8'))
         self.assertEqual(frozen['images'], [])
-        self.assertTrue(frozen['wechat_push_text'])
+        self.assertNotIn('wechat_push_text',frozen)
 
     def test_start_at_1036_waits_until_prepare_and_records_process_lifecycle(self):
         service, factory, _ = self.service()
@@ -400,6 +607,7 @@ class BriefingPushTests(unittest.TestCase):
 
     def test_partial_report_pushes_text_then_images_at_eleven(self):
         daily = '【阿联酋项目资料下载日报】\n2026年10月23日\nNCC系统：100个文件'
+        self.daily_text=daily
         content = daily.encode('utf-8-sig')
         folder = self.folder.parent
         (folder / '微信推送文.txt').write_bytes(content)
@@ -438,9 +646,10 @@ class BriefingPushTests(unittest.TestCase):
         sender.send.assert_not_called()
         sender.send_image.assert_called_once()
 
-    def test_daily_download_text_is_included_with_hash_validation(self):
+    def test_daily_download_text_uses_live_facts_and_ignores_old_files(self):
         folder = self.folder.parent
         content = '【项目资料下载日报】\n当日已记录下载情况'.encode('utf-8-sig')
+        self.daily_text=content.decode('utf-8-sig')
         (folder / '微信推送文.txt').write_bytes(content)
         marker = dict(date='2026-10-23', ready=False, text_file='微信推送文.txt',
                       generated_at='2026-10-23T10:30:00+08:00', text_sha256=hashlib.sha256(content).hexdigest())
@@ -449,23 +658,16 @@ class BriefingPushTests(unittest.TestCase):
         self.assertTrue(text.startswith('【项目资料下载日报】'))
         self.assertEqual(text,content.decode('utf-8-sig'))
         (folder / '微信推送文.txt').write_text('tampered', encoding='utf-8')
-        self.assertIn('暂未就绪', snapshot_push_text(self.base, self.state, self.at))
-
-    def test_legacy_frozen_analysis_text_is_not_sent_after_update(self):
-        folder = self.folder.parent
-        daily = '【项目资料下载日报】\n只发送原推送文'
-        content = daily.encode('utf-8-sig')
-        (folder / '微信推送文.txt').write_bytes(content)
-        (folder / '推送状态.json').write_text(json.dumps(dict(date='2026-10-23', ready=True,
-            text_file='微信推送文.txt', generated_at='2026-10-23T10:30:00+08:00',
-            text_sha256=hashlib.sha256(content).hexdigest())), encoding='utf-8')
-        self.state['wechat_push_text'] = daily + '\n\n本次仅统计已完成解压、解析的部分；待处理42个。'
+        self.assertEqual(snapshot_push_text(self.base,self.state,self.at),self.daily_text)
+        self.state['wechat_push_text'] = '过时文字及解析附录'
         self.write_marker()
         sender = Mock()
         result = deliver(self.base,self.marker,self.settings,self.at,lambda:sender)
         self.assertTrue(result['complete'])
-        self.assertEqual(sender.send.call_args.args[1],daily)
+        self.assertEqual(sender.send.call_args.args[1],self.daily_text)
         sender.send_image.assert_called_once()
+        self.daily_ready=False
+        self.assertIn('暂未就绪',snapshot_push_text(self.base,self.state,self.at))
 
     def test_stuck_renderer_cannot_block_prebuilt_snapshot_and_snapshot_is_immutable(self):
         service, factory, send = self.service()

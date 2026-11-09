@@ -37,6 +37,20 @@ def generate(thread, turn, payload, structured):
     mode = payload['message']
     if mode == 'crash':
         os._exit(9)
+    if mode in ('account-quota', 'account-login'):
+        event('error', thread, willRetry=True, error=dict(
+            message='usage limit exceeded PRIVATE_SECRET' if mode == 'account-quota' else 'not logged in PRIVATE_SECRET'))
+        return
+    if mode == 'network-down':
+        for _ in range(600):
+            event('error', thread, willRetry=True, error=dict(message='error sending request: failed to connect PRIVATE_ENDPOINT'))
+            time.sleep(.05)
+        return
+    if mode == 'slow-initial':
+        time.sleep(.4)
+    if mode == 'transient-network-slow':
+        event('error', thread, willRetry=True, error=dict(message='failed to connect PRIVATE_ENDPOINT'))
+        time.sleep(.4)
     if mode == 'idle':
         time.sleep(30)
         return

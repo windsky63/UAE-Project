@@ -1,175 +1,167 @@
 {
   "format": 1,
-  "release": "2026.10.30-extraction-cache.1",
-  "generated_at_beijing": "2026-10-30T16:44:22.887826+08:00",
-  "description": "Content-addressed ZIP/7z extraction reuse across parser versions, verified legacy adoption, and post-success cleanup of superseded extractions.",
+  "release": "2026.11.04-owner-updates.1",
+  "generated_at_beijing": "2026-11-08T16:22:15.974642+08:00",
+  "description": "Current cumulative runtime: indexed history retention; shared automatic/manual extraction-cache cleanup with explicit cross-ID document lineage.",
   "schedule_beijing": "02:00-10:30",
   "automatic_download_without_scope_confirmation": false,
   "resume_inventory_only": false,
   "files": {
     "app/analysis_cache.json": {
-      "sha256": "61fe3c1b27061162b8f89bcdb42b53b25c670aa247c27e9bccfa625b25bc2c1c",
-      "bytes": 1387
+      "sha256": "ee05bdd84c622b27363dc4956435a398afdabd21a7662883e3c982d1ab9b0ade",
+      "bytes": 1470
     },
     "app/analysis_settings.py": {
       "sha256": "1051a05e5919735c352a2ea8f0d73b59d6ff8315e21e11f1520dce7a99430ddd",
       "bytes": 910
     },
     "app/analysis_worker.py": {
-      "sha256": "17549245462d1e4d47d2ef9d0819c4f5541713b2df691c52b9f4d966098a3620",
-      "bytes": 32570
-    },
-    "app/app_paths.py": {
-      "sha256": "f75c67195c03698e00f8a6a0f15deca25cd93c74e2a05c54dfee1333c261c183",
-      "bytes": 224
+      "sha256": "e3dec514325f30dafbef5bedcd005103203306f6c4ba07700c93cf24ad09fef9",
+      "bytes": 39940
     },
     "app/archive_index.py": {
-      "sha256": "5bb486beeab600315aabcd27aacb9d71e5ce59aa0d5d98d4d82a2015b8e33a02",
-      "bytes": 6323
+      "sha256": "1559b041f185e1b9fa3d22fb9998db4aa36a869c7f93f6ef1ed37b61df36cd19",
+      "bytes": 6664
     },
     "app/briefing.py": {
-      "sha256": "6d5bd9d70e2d94bf46c93def1f3bf34df2e24e605f461dc5b0f8806c4110138a",
-      "bytes": 48006
+      "sha256": "f2ec3e71efe79787a3c6fd9298c6c338ce0c0eef159c599766e7d8cd5f0db64c",
+      "bytes": 46568
     },
     "app/briefing_schedule.py": {
-      "sha256": "b345bdf4eb91b9a60618e412813847aaa9e82ef15fea4e2ce5a89f53350f4c42",
-      "bytes": 19608
+      "sha256": "ee6622f0c1f62bef563949db1b6d3bb24c54457988f4d87bfe123a501106acec",
+      "bytes": 30214
     },
     "app/business_type.py": {
-      "sha256": "714fa266174beda2984bf79711c71aaf0999c2fe014762d9ddd6873f73ce5784",
-      "bytes": 14383
+      "sha256": "0fa37a519357bc5fa62a58038e2fdba68ab45bde31a7f2bc8b461c284f485982",
+      "bytes": 14474
     },
     "app/equipment_reader.py": {
       "sha256": "f4651c8cd38fb70ada0dcefd4efe7f242d4288328e2328983a46eb41a2704885",
       "bytes": 28149
     },
     "app/file_layout.py": {
-      "sha256": "c88061db430afa9f652c2e72714ffc28540dd06e6b6bc956d35376b7cd16ecc3",
-      "bytes": 44621
+      "bytes": 83473,
+      "sha256": "fc2122ae86e8eb4af3cdf4430f3b8bd73c68147b3b651b0ae8194c2f1bc7eaf9"
     },
     "app/fusion_client.py": {
-      "sha256": "9d7c876b85f1cdfb04f1f8a1192b627b698726455dfebab5a7910a99e7d06a9c",
-      "bytes": 16775
+      "sha256": "6d7f77b084b8ad60f13b0c2e66dabee2d29599bc0f3bc133283c96eef335cb52",
+      "bytes": 32252
     },
     "app/gui.py": {
-      "sha256": "6fc182f532af1af203e2fb91ee9049f43c825071e8c31307f415a7b8725f341a",
-      "bytes": 1063
+      "sha256": "e53d4513868973bf262557009cdbcccece2d2b86658a318ac1de7e96c021e5e5",
+      "bytes": 1059
     },
     "app/history_repair.py": {
-      "sha256": "12ea64f1502c54d08eed5853843c62c0ef2156b85801ffc51f9debafc9ba7cab",
-      "bytes": 13242
+      "sha256": "e0ee23a92b49876f88d55d37d3fdcef8f68e8cb0dc3f9ac9b40f95c5418271dc",
+      "bytes": 14295
     },
     "app/inventory.py": {
-      "sha256": "708cf0d3e0960f3fad5e29c401a058a7a9098c7e624dab73b3bebcc16d3d53d4",
-      "bytes": 20683
+      "bytes": 24234,
+      "sha256": "56ba9492378643e8e627281c4a08f3b87b721150fd362ccc870bef7fdd30addd"
     },
     "app/ledger.py": {
-      "sha256": "da155fbc62f94afcdcf311c8e4eb43d64cdb422c30c67b4d9f0c4f6c31865297",
-      "bytes": 11215
+      "sha256": "d1a372d90b8f8f110288c219d64e2153ba859e3e062e8560386f06ddee0eb55f",
+      "bytes": 19119
     },
     "app/ledger_workbook.py": {
       "sha256": "a0f8bfc1f37884073843771c50b678537872a17e7d920d4d79c5ac6832975e34",
       "bytes": 10341
     },
     "app/local_analysis.py": {
-      "sha256": "a8820b4673d462d200b0a1bc27de7efc0bcd4178ebfb51a560ab4059e1c28c9f",
-      "bytes": 43715
+      "sha256": "46f9529e4f81ba31340d1a174658bfb76bc38b81b843d4af8e07e3f5751ac5c0",
+      "bytes": 44166
     },
     "app/local_credentials.py": {
-      "sha256": "a80a9a9d7abeec3e232d4cf13e24d828d64e7e00e282d555ff08da174a64b1a3",
-      "bytes": 331
+      "sha256": "0c23655d245ed3dabe6b45e9d7b6b15c0338aa4cb10c774a90efa05a35a684c8",
+      "bytes": 327
     },
     "app/login_test.py": {
-      "sha256": "1384bb914e07bac070d19b800f7bb42d4dc900be0360d8db07e7919386b1f52f",
-      "bytes": 3513
+      "sha256": "ad5cf5e5cb51b4b6c961489ae40c8b3033f5c1775d82c59ab8873bcd53420075",
+      "bytes": 3509
     },
     "app/logout_watchdog.py": {
-      "sha256": "d0d7fa3fc7ea9cc64823de1989d1325857318963ab62424e98abbb9eb7f75c22",
-      "bytes": 1640
-    },
-    "app/output_paths.py": {
-      "sha256": "64d0403ae5a6e3bcc5351fb765b098b30c3d7935ff39098dddda1ad44a154f83",
-      "bytes": 999
+      "sha256": "adf7856e09719ec6fac9c826a35af87ed2af784ccadf0d5d9eb5437e4fd38035",
+      "bytes": 1636
     },
     "app/parse_idf_to_json.py": {
-      "sha256": "6403181cde3caf2bfad3378002faf52c0c2a94ee52eb27e843ac317bcccc8ba9",
-      "bytes": 182679
+      "sha256": "2ff992c7d47d6a66d8c58c9bfe10e7989dc76f7bfaeb4b8212ad9894b30aa431",
+      "bytes": 182675
     },
     "app/parse_pcf_to_json.py": {
-      "sha256": "1a64c82dcadf72499fa490a8c2235636e205ab4b2395da5483bb46374ae63a5f",
-      "bytes": 53531
+      "sha256": "1298a8083165f022bb614e9b2c299d29768e56b788c48948f09df5a1c744d4a1",
+      "bytes": 53527
     },
     "app/path_maintenance.py": {
-      "sha256": "48ae902fdd55e5e589356eb7c806a273021fc0861cad062b723d784153931ec9",
-      "bytes": 11733
+      "sha256": "36675fa372261a32196addf4c54874ca025e8a2d7234e284650d075b24655ca6",
+      "bytes": 14640
     },
     "app/paths.py": {
-      "sha256": "e229a6816e2b8f94375d5eed0dcc58c678c680a680c3d1bf7b83e2016f630bd4",
-      "bytes": 2285
+      "sha256": "14d543bc2369c5df2bc45ca9845d9b0f5f02320bdfd26f9155058edf0ff5bafa",
+      "bytes": 3160
     },
     "app/prefab_rules_260818.py": {
       "sha256": "e12ee9aec9976bd9831a08f1edb34fc7afd7d64cf3647caa820a36ed25674202",
       "bytes": 204259
     },
     "app/preflight.py": {
-      "sha256": "4361122e6d2d0e124cef1b275a7e6b984cf92bfbfcb32dd913ffcb8f270dd54c",
-      "bytes": 14810
+      "bytes": 18859,
+      "sha256": "4f61ff2ca9fe86141876f06b14c375f76657f62c1c28bd8802071f0ece9aa74f"
     },
     "app/progress.py": {
-      "sha256": "1f6734883290c4e0b630f56ee9bd1c00648878be826927723cd7fb22cb4cdf1f",
-      "bytes": 5443
+      "sha256": "957b14d226ae11f12609af440dbb054b79050822e25e6271df3a0aadae961b9c",
+      "bytes": 6490
     },
     "app/publication_worker.py": {
-      "sha256": "98499289940527984d0f21025fd9e1c2d55c3989849a9c0a032e7fe57b89aa04",
-      "bytes": 4580
+      "sha256": "ce6cb8e21255203d8aa55415bc9cadea31d5fca7736df7ba2d4c521438a14a1e",
+      "bytes": 4576
     },
     "app/push_settings.py": {
-      "sha256": "c0d4350d1c9c212fdd820ca9790bac248183e08e0de8ae8d9e2b9ae0919dc59c",
-      "bytes": 5203
+      "sha256": "6059cb7cdf35b2518b105f712760cb1bd5b0855ec2da9480342e295f196e5068",
+      "bytes": 5673
     },
     "app/push_setup.py": {
-      "sha256": "73fd029ec07245c1775bbbb89a90373ea19cadf7ab5b4d861518e62b0c4ced59",
-      "bytes": 8858
+      "sha256": "a038368534c07f26c951f91e4af59b18b835174618b11c832cbaa99cf06db7d7",
+      "bytes": 8856
     },
     "app/reporting.py": {
-      "sha256": "175235260d39fcc258eeef450bcf999c328b416873c474a3edf276155b358121",
-      "bytes": 21139
+      "sha256": "f8e81069682e343b9220ff4980a13237539774c179bd7c412bdea83275c28cbc",
+      "bytes": 43403
     },
     "app/runtime_logging.py": {
-      "sha256": "bc2b232f9a8d6c05f0d6f016a58fa19adcdf441a73146110eb269e197ee84948",
-      "bytes": 4360
+      "sha256": "7fae787b2f98db1e558993bd59d78491c5897bf68d4db132d39aaf9147652453",
+      "bytes": 5324
     },
     "app/scheduler.py": {
-      "sha256": "a3215034d781cdc6591ec249d1b32e1355bc501bc492afc5f56cea7defaee581",
-      "bytes": 15566
+      "bytes": 18490,
+      "sha256": "ab5132cffe43afb9b41e2623f3f0313ba6cf8f1b6c9b7dfdd6dbf54e38eba539"
     },
     "app/scope_review.py": {
-      "sha256": "5bf9513539d08414832cfea66822fcbcf68c100ceabacfed52e76545975b906d",
-      "bytes": 5333
+      "sha256": "8858017c7ed894c8ddbc898fb8d036743850e69a2c053c8cc8208581309b55e5",
+      "bytes": 5329
     },
     "app/sync.py": {
-      "sha256": "337da86907674b9c54952bf6ec505e5912aebce685ec90b71381461107dc6acb",
-      "bytes": 40241
+      "bytes": 61209,
+      "sha256": "00b83dbff0f35f87f510b402f4969f94a9d0f1dcc6169343feccd393660adfde"
     },
     "app/wechat_delivery.py": {
-      "sha256": "76afdc965505656f89e6b92549c656b427f03e1ca3e432caa70e0bd4affe6cce",
-      "bytes": 10181
+      "sha256": "960ac9c20802c7ba2166c7c324a4da7837263040d2ac77187cfbbb51fc43e4eb",
+      "bytes": 11086
     },
     "app/wechat_test_send.py": {
-      "sha256": "5d40f5278fd3a6d8659db0194f826b704ce290ed8521dc2839154bcd5ca4af8b",
-      "bytes": 6983
+      "sha256": "151885199a938d10dfe5c5a42358df005f0a5ae8af687e197a424c7b194a237c",
+      "bytes": 6979
     },
     "app/weld_classification.py": {
       "sha256": "53e748867c3a55e55a20406e96f7012e209bb2f7f07b559bd6047aaf35f797a1",
       "bytes": 6898
     },
     "app/workflow.py": {
-      "sha256": "d448d7820c3a86782015a1def942447df71cf2ddb85de04267181597c5d48868",
-      "bytes": 13966
+      "bytes": 17776,
+      "sha256": "ca7a4d81a0b408279310438903f4a29431f3c0353ee57d0b97789dd30994cf56"
     },
     "app/台账.py": {
-      "sha256": "74c6ab51f89b74d2a559d87961d969585ef02175fbb481f10eaf16d3f8f088be",
-      "bytes": 28371
+      "sha256": "25f269184c5442d91ba1d2f2536272e70989e400be61e2028415b18df04091f0",
+      "bytes": 28367
     },
     "approved_download_plan.json": {
       "sha256": "200e9c6a81d7171fd079b46eaa76ed4d3b5bc6a00d91ad8d9071e28fda1e808c",
@@ -224,8 +216,8 @@
       "bytes": 224
     },
     "wechat_push/uia.py": {
-      "sha256": "3046ae2c81f6f752318e8cd6a5bcf6995fe0e28727b85c740bd2a2a7489cbf0a",
-      "bytes": 16347
+      "sha256": "0d251775b789e99c562f4c65f6d7f143cacd251b86a5cb4ffe03bd641faab609",
+      "bytes": 16348
     },
     "wechat_push/uia_profile.json": {
       "sha256": "f52f230f43d8e8e1960e522552082cc90ca1305a7b84dc6906ce5dd5223a6bca",
@@ -260,16 +252,36 @@
       "bytes": 169
     },
     "app/path_maintenance_launcher.py": {
-      "sha256": "9c777b03cdae84a1bcfc3111292741187201aa26f9d307608c580edf620f30fb",
-      "bytes": 2656
+      "sha256": "795f6f6aa0917c40cdd67306dab21b6840736dd18ccaeab85b7799d5d8749ff8",
+      "bytes": 2652
     },
     "app/archive_cache.py": {
-      "sha256": "9a4c6b8eb4b9ecf7f3d6a6e93fce8f3e737de49cbf055d5c7c5f2b2417773e8c",
-      "bytes": 13219
+      "sha256": "a649f7e4aeadfe98afd1e4ad14909692f7e9c54910e38bf961642d8624c7aca3",
+      "bytes": 18811
     },
     "app/migration_recovery.py": {
       "sha256": "470c0c0e56f826387bdf704df8d152d435c748f0f34ad01d36c7a019a77b4255",
       "bytes": 5161
+    },
+    "app/file_inventory.py": {
+      "sha256": "66c7e124afe73bea9321120e4915dcb54fe988ecca5d0ec35bc90009c7adb4da",
+      "bytes": 4606
+    },
+    "app/download_diagnostics.py": {
+      "sha256": "a4b01268d8d96c1f5717e3dd69e893575f2143fae75a8dd391a844ea3951152f",
+      "bytes": 3293
+    },
+    "app/chunked_download.py": {
+      "sha256": "86e63697535f679d7eb6b496661615e763a87bf88f5e7fa36a5ea55a96736c11",
+      "bytes": 7001
+    },
+    "app/local_reconcile.py": {
+      "bytes": 19514,
+      "sha256": "693c8428e75f3f0793d8653b50344d5b7172b6631665e14f5a9962ffb31ace8e"
+    },
+    "app/history_retention.py": {
+      "sha256": "24316655806c1ea846a6511b62dd969b9f22095c03dd93cd3e85edaca0f9a087",
+      "bytes": 23916
     }
   },
   "initial_inventory_exception_version_ids": [
@@ -279,7 +291,7 @@
   "daily_push_encoding": "utf-8-sig",
   "briefing_prepare_beijing": "10:40",
   "wechat_push_beijing": "11:00",
-  "ncc_statistics_basis": "workspace + active content ID + current version; history excluded",
+  "ncc_statistics_basis": "current content ID: downloaded latest or one newest available downloaded predecessor; directory extras excluded",
   "download_priority_units": [
     213,
     27,
@@ -292,7 +304,8 @@
     "new_files",
     "updated_files"
   ],
-  "patch_release": "2026.10.31-auto-migration-recovery.1",
-  "patch_generated_at_beijing": "2026-10-31T12:51:31.932864+08:00",
-  "patch_description": "Recover journaled file moves asynchronously outside the download window; preserve manual stop ownership, retry with visible state, and keep daily publication independent."
+  "patch_release": "2026.11.09-all-tools-logging.1",
+  "patch_generated_at_beijing": "2026-11-09T16:36:51.342718+08:00",
+  "patch_description": "Accurate per-phase counters and elapsed time, bounded success aggregation with last context, task correlation, safe traceback capture and no new entry points.",
+  "patch_previous_release": "2026.11.08-history-status-retry.5"
 }

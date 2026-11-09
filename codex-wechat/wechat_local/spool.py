@@ -139,8 +139,10 @@ class DesktopSpool:
             status, detail = "confirmed", "Desktop UI accepted the send action; recipient receipt is unavailable"
         except DeliveryNotSent as exc:
             status, detail = "not_sent", "No send action was submitted: " + str(exc)
-        except Exception:
-            status, detail = "uncertain", "UI send outcome needs review"
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).exception('UI send outcome uncertain: action_id=%s chat_id=%s', command['id'], command['chat_id'])
+            status, detail = "uncertain", f"UI send outcome needs review: {type(exc).__name__}: {exc}"
         with self.db: self.db.execute("UPDATE ui_actions SET status=?,detail=? WHERE id=?", (status, detail, command['id']))
         return {"status": status, "detail": detail}
 

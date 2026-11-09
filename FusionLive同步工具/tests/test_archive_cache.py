@@ -173,6 +173,147 @@ class ArchiveCacheTests(unittest.TestCase):
         cleanup_history(self.queue)
         self.assertTrue(old.is_file())
 
+    def replace_with_new_platform_id(self, content=PCF, *, same_lineage=True):
+        with closing(sqlite3.connect(self.database)) as db:
+            old = list(db.execute("SELECT * FROM files WHERE active=1").fetchone())
+        self.publish(content)
+        old[-1] = 0
+        with closing(sqlite3.connect(self.database)) as db, db:
+            db.execute("UPDATE files SET id='new-id'")
+            db.execute('INSERT INTO files VALUES(?,?,?,?,?,?,?,?)',old)
+            db.execute('CREATE TABLE documents(project,id,first_id)')
+            db.executemany('INSERT INTO documents VALUES(?,?,?)',[
+                ('p','source','source'),('p','new-id','source' if same_lineage else 'unrelated')])
+
+    def test_changed_file_id_uses_explicit_document_lineage_after_success(self):
+        self.publish()
+        old = self.member(self.run_queue())
+        self.replace_with_new_platform_id(PCF.replace('L001','L002'))
+        self.assertEqual(self.queue.discover(),1)
+        cleanup_history(self.queue)
+        self.assertTrue(old.is_file())
+        self.assertTrue(self.queue.process_next())
+        self.assertFalse(old.exists())
+        self.assertTrue(self.path.is_file())
+
+    def test_changed_file_id_failed_replacement_preserves_old_extraction(self):
+        self.publish()
+        old = self.member(self.run_queue())
+        self.replace_with_new_platform_id('invalid pcf')
+        self.assertEqual(self.queue.discover(),1)
+        self.assertTrue(self.queue.process_next())
+        self.assertEqual(self.queue.counts(),{'failed':1})
+        cleanup_history(self.queue)
+        self.assertTrue(old.is_file())
+
+    def test_ambiguous_current_document_family_preserves_old_task(self):
+        self.publish()
+        old = self.member(self.run_queue())
+        self.replace_with_new_platform_id(PCF.replace('L001','L002'))
+        with closing(sqlite3.connect(self.database)) as db, db:
+            db.execute("INSERT INTO files SELECT project,'pending-id',filename,path,'pending',bytes,sha256,1 FROM files WHERE id='new-id'")
+            db.execute("INSERT INTO documents VALUES('p','pending-id','source')")
+        self.run_queue()
+        cleanup_history(self.queue)
+        self.assertTrue(old.is_file())
+
+    def test_unscanned_current_archive_pins_shared_cache(self):
+        self.publish()
+        self.run_queue()
+        shared = list((self.queue.cache/'extraction_cache').glob('*/manifest.json'))
+        with self.queue.db:
+            self.queue.db.execute('UPDATE jobs SET active=0')
+        cleanup_history(self.queue)
+        self.assertTrue(all(p.is_file() for p in shared))
+
+    def test_delivery_lock_defers_both_manual_and_automatic_cleanup(self):
+        from analysis_worker import worker_lock
+        self.publish()
+        old = self.member(self.run_queue())
+        with worker_lock(self.base/'runtime/wechat_delivery') as acquired:
+            self.assertTrue(acquired)
+            with self.assertRaisesRegex(ValueError,'文件投递'):
+                cleanup_history(self.queue)
+        self.assertTrue(old.is_file())
+
+    def test_same_filename_without_document_lineage_never_replaces_old_job(self):
+        self.publish()
+        old = self.member(self.run_queue())
+        self.replace_with_new_platform_id(PCF.replace('L001','L002'),same_lineage=False)
+        self.run_queue()
+        cleanup_history(self.queue)
+        self.assertTrue(old.is_file())
+
+    def test_retained_document_lineage_covers_missing_old_file_row(self):
+        self.publish()
+        old = self.member(self.run_queue())
+        self.replace_with_new_platform_id(PCF.replace('L001','L002'))
+        with closing(sqlite3.connect(self.database)) as db, db:
+            db.execute("DELETE FROM files WHERE id='source'")
+        self.run_queue()
+        self.assertFalse(old.exists())
+
+    def test_stale_completed_job_cannot_authorize_cleanup_after_source_changes(self):
+        self.publish()
+        old = self.member(self.run_queue())
+        self.publish(PCF.replace('L001','L002'))
+        with patch('archive_cache.cleanup_history',return_value=0):
+            self.run_queue()
+        self.publish(PCF.replace('L001','L003'))  # Worker has not discovered this update yet.
+        cleanup_history(self.queue)
+        self.assertTrue(old.is_file())
+
+    def test_missing_replacement_report_preserves_old_extraction(self):
+        self.publish()
+        old = self.member(self.run_queue())
+        self.publish(PCF.replace('L001','L002'))
+        with patch('archive_cache.cleanup_history',return_value=0):
+            self.run_queue()
+        row=self.queue.db.execute('SELECT result_path FROM jobs WHERE active=1').fetchone()
+        (self.queue.cache / row['result_path']).unlink()
+        cleanup_history(self.queue)
+        self.assertTrue(old.is_file())
+
+    def test_idle_maintenance_uses_same_cleanup_without_parsing(self):
+        self.publish()
+        old = self.member(self.run_queue())
+        self.replace_with_new_platform_id(PCF.replace('L001','L002'))
+        with patch('archive_cache.cleanup_history',return_value=0):
+            self.run_queue()
+        self.assertTrue(old.is_file())
+        with patch('local_analysis.analyze',side_effect=AssertionError('maintenance parsed source')):
+            self.queue.cleanup_old_cache(force=True)
+        self.assertFalse(old.exists())
+
+    def test_real_manual_cli_checks_same_lineage_without_rediscovery_or_parsing(self):
+        import subprocess,sys
+        self.publish()
+        old = self.member(self.run_queue())
+        self.replace_with_new_platform_id(PCF.replace('L001','L002'))
+        with patch('archive_cache.cleanup_history',return_value=0):
+            self.run_queue()
+        before = [tuple(r) for r in self.queue.db.execute('SELECT * FROM jobs ORDER BY key')]
+        script=Path(__file__).resolve().parents[1]/'app/archive_cache.py'
+        result=subprocess.run([sys.executable,str(script),'--cleanup','--base-dir',str(self.base)],
+                              capture_output=True,timeout=60)
+        self.assertEqual(result.returncode,0,result.stderr.decode('utf-8',errors='replace'))
+        self.assertFalse(old.exists())
+        self.assertEqual(before,[tuple(r) for r in self.queue.db.execute('SELECT * FROM jobs ORDER BY key')])
+        self.assertTrue(self.path.is_file())
+
+    def test_manual_cli_rejects_live_worker(self):
+        import subprocess,sys
+        from analysis_worker import worker_lock
+        script=Path(__file__).resolve().parents[1]/'app/archive_cache.py'
+        self.publish()
+        old = self.member(self.run_queue())
+        with worker_lock(self.queue.cache) as acquired:
+            self.assertTrue(acquired)
+            result=subprocess.run([sys.executable,str(script),'--cleanup','--base-dir',str(self.base)],
+                                  capture_output=True,timeout=60)
+        self.assertNotEqual(result.returncode,0)
+        self.assertTrue(old.is_file())
+
     def test_current_other_file_keeps_shared_historical_content(self):
         self.publish()
         self.run_queue()

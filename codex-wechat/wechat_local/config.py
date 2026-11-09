@@ -57,8 +57,9 @@ class LocalConfig(BaseModel):
     codex_auto_access_dirs: bool = True
     codex_access_dirs: list[str] = Field(default_factory=list)
     _config_dir: Path | None = PrivateAttr(default=None)
-    codex_timeout_seconds: int = Field(600, ge=5, le=1800)
-    codex_idle_timeout_seconds: int = Field(300, ge=0, le=1800)
+    codex_timeout_seconds: int = Field(0, ge=0, le=1800)
+    codex_connect_timeout_seconds: int = Field(90, ge=5, le=600)
+    codex_idle_timeout_seconds: int = Field(0, ge=0, le=1800)
     reply_max_age_seconds: int = Field(900, ge=10, le=3600)
     max_reply_chars: int = Field(2000, ge=50, le=10000)
     recent_messages: int = Field(6, ge=0, le=50)

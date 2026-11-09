@@ -118,6 +118,8 @@ class RecoveryTests(unittest.TestCase):
         self.new.write_bytes(b'bad')
         result = recover(self.base)
         self.assertEqual(result['phase'], 'failed')
+        self.assertEqual(self.old.read_bytes(), b'old')
+        self.assertFalse(self.history.exists())
         self.assertTrue((self.runtime / 'layout.pending').exists())
         self.assertTrue((self.runtime / 'file_analysis/stop.request').exists())
         self.assertEqual(self.ledger.one("SELECT COUNT(*) FROM layout_moves WHERE state!='done'")[0], 2)
@@ -213,11 +215,13 @@ class RecoverySchedulingTests(unittest.TestCase):
         self.service.tick(self.at + timedelta(seconds=1))
         self.factory.assert_called_once()
         self.assertIsNotNone(self.service.notice_job)
-        self.assertTrue((self.service.marker('2026-10-31').parent / '微信推送文快照.json').exists())
+        self.assertFalse((self.service.marker('2026-10-31').parent / '微信推送文快照.json').exists())
         self.service.analysis_start.assert_not_called()
         (self.base / 'runtime/layout.pending').unlink()
         self.job.poll.return_value = dict(result=dict(phase='complete', reason='finished'))
         self.service.tick(self.at + timedelta(seconds=2))
+        self.service.analysis_start.assert_not_called()
+        self.service.tick(self.at.replace(hour=11, minute=0))
         self.service.analysis_start.assert_called_once()
 
     def test_failed_recovery_retries_after_sixty_seconds_even_after_publication(self):

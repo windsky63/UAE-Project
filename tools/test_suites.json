@@ -1,0 +1,606 @@
+{
+  "components": {
+    "ima": {
+      "directory": "Ima知识库管理",
+      "full": [
+        "tests/test_*.py"
+      ]
+    },
+    "sync": {
+      "directory": "FusionLive同步工具",
+      "full": [
+        "tests/test_*.py"
+      ],
+      "pythonpath": "app"
+    },
+    "manager": {
+      "directory": "管理中心",
+      "full": [
+        "tests/test_*.py"
+      ]
+    },
+    "wechat": {
+      "directory": "codex-wechat",
+      "full": [
+        "tests/test_*.py"
+      ]
+    },
+    "nas": {
+      "directory": "绿联云上传工具",
+      "full": [
+        "test_*.py"
+      ]
+    },
+    "harness": {
+      "directory": ".",
+      "full": [
+        "tools/tests/test_test_runner.py",
+        "tools/tests/test_cleanup_deployment.py",
+        "tools/tests/test_prepare_deployment.py"
+      ]
+    }
+  },
+  "areas": {
+    "analysis-cache-cleanup": {
+      "description": "统一自动与手动旧解析缓存校验、跨文件ID版本关联和前端操作",
+      "sources": [
+        "FusionLive同步工具/app/archive_cache.py",
+        "管理中心/web/src/AnalysisCacheCleanupPanel.vue"
+      ],
+      "tests": {
+        "sync": [
+          "tests/test_archive_cache.py",
+          "tests/test_analysis_worker.py"
+        ],
+        "manager": [
+          "tests/test_manager.py",
+          "tests/test_bulk_and_task_cleanup.py",
+          "tests/test_network.py"
+        ]
+      },
+      "ui": [
+        "check-history-cleanup.cjs"
+      ]
+    },
+    "history-cleanup": {
+      "description": "历史文件仅手动清理、后台进度/停止、下载禁止自动清理及隔离前端交互",
+      "sources": [
+        "FusionLive同步工具/app/history_retention.py",
+        "管理中心/web/src/HistoryCleanupPanel.vue"
+      ],
+      "tests": {
+        "sync": [
+          "tests/test_history_retention.py",
+          "tests/test_download_forbidden.py"
+        ],
+        "manager": [
+          "tests/test_manager.py",
+          "tests/test_bulk_and_task_cleanup.py",
+          "tests/test_network.py"
+        ]
+      },
+      "ui": [
+        "check-history-cleanup.cjs"
+      ]
+    },
+    "ima-collect": {
+      "description": "项目管理规定与 PDF 图纸分类提取、只读数据库身份、嵌套 ZIP、增量和旧版归档",
+      "sources": [
+        "Ima知识库管理/ima_manager/collect.py",
+        "Ima知识库管理/ima_manager/collection_rules.py",
+        "Ima知识库管理/ima_manager/archive_read.py",
+        "Ima知识库管理/ima_manager/database_source.py",
+        "Ima知识库管理/ima_manager/document_rules.py",
+        "Ima知识库管理/ima_manager/download_paths.py"
+      ],
+      "tests": {
+        "ima": [
+          "tests/test_collect.py",
+          "tests/test_drawing_collect.py",
+          "tests/test_daily_watch.py",
+          "tests/test_scope.py",
+          "tests/test_updates.py",
+          "tests/test_config_cli.py"
+        ],
+        "manager": [
+          "tests/test_ima_control.py"
+        ]
+      }
+    },
+    "ima": {
+      "description": "ima 管理中心接入、每日 TXT、范围保护、台账复制、更新归档与安全停止",
+      "sources": [
+        "Ima知识库管理/ima_manager/*.py",
+        "Ima知识库管理/package_management_docs.py",
+        "Ima知识库管理/requirements.txt",
+        "Ima知识库管理/打开ima管理工具.cmd",
+        "管理中心/ima_control.py",
+        "管理中心/manager.py",
+        "管理中心/server.py",
+        "管理中心/build_deployment.py",
+        "requirements.txt"
+      ],
+      "tests": {
+        "ima": [
+          "tests/test_*.py"
+        ],
+        "manager": [
+          "tests/test_*.py"
+        ]
+      },
+      "ui": [
+        "check-ima.cjs",
+        "check-overview-cards.cjs"
+      ]
+    },
+    "ima-ui": {
+      "description": "ima 页面流程、完整记录分页、任务状态与日志，以及隔离浏览器交互",
+      "sources": [
+        "管理中心/web/src/ImaPanel.vue",
+        "管理中心/web/src/ImaWorkspace.vue",
+        "管理中心/web/src/ImaPagination.vue",
+        "管理中心/web/check-ima.cjs"
+      ],
+      "tests": {
+        "manager": [
+          "tests/test_ima_control.py",
+          "tests/test_log_cleanup.py"
+        ]
+      },
+      "ui": [
+        "check-ima.cjs"
+      ]
+    },
+    "quick": {
+      "description": "快速基础检查；不代表完整回归",
+      "tests": {
+        "sync": [
+          "tests/test_runtime_logging.py",
+          "tests/test_download_priority.py",
+          "tests/test_analysis_settings.py"
+        ],
+        "manager": [
+          "tests/test_download_stats.py",
+          "tests/test_log_progress.py"
+        ],
+        "wechat": [
+          "tests/test_quoted_messages.py"
+        ],
+        "nas": [
+          "test_upload.py::UploadTests::test_managed_log_only_uses_captured_stdout",
+          "test_upload.py::UploadTests::test_high_volume_successes_and_archives_are_summarized_with_exact_counts"
+        ],
+        "harness": [
+          "tools/tests/test_test_runner.py"
+        ]
+      }
+    },
+    "overview": {
+      "description": "工作台卡片、实时正式/历史目录和待发布数量",
+      "sources": [
+        "管理中心/web/src/App.vue",
+        "管理中心/web/src/style.css",
+        "管理中心/web/src/legacy.css",
+        "管理中心/web/src/HelpTip.vue"
+      ],
+      "tests": {
+        "manager": [
+          "tests/test_download_stats.py",
+          "tests/test_manager.py::ManagerTests::test_overview_is_read_only_and_reports_missing_cache_as_unknown",
+          "tests/test_manager.py::ManagerTests::test_overview_reads_latest_generated_snapshot_without_rescanning"
+        ]
+      },
+      "ui": [
+        "check-overview-cards.cjs"
+      ]
+    },
+    "manager-http": {
+      "description": "管理中心 HTTP 响应、客户端断连及 SSE 恢复",
+      "sources": [
+        "管理中心/server.py"
+      ],
+      "tests": {
+        "manager": [
+          "tests/test_network.py",
+          "tests/test_codex_chat.py::CodexChatTests::test_sse_replays_only_requested_session_and_resumes_by_cursor"
+        ]
+      }
+    },
+    "tool-controls": {
+      "description": "工作台选择工具批量启停、接口传递与任务清理保护",
+      "sources": [
+        "管理中心/tests/test_bulk_and_task_cleanup.py"
+      ],
+      "tests": {
+        "manager": [
+          "tests/test_bulk_and_task_cleanup.py",
+          "tests/test_network.py"
+        ]
+      },
+      "ui": [
+        "check-overview-cards.cjs"
+      ]
+    },
+    "logging": {
+      "description": "各工具阶段进度、真实计数、心跳、任务上下文、重复合并、堆栈、脱敏、轮转与UTF-8编码",
+      "sources": [
+        "管理中心/log_*.py",
+        "管理中心/web/src/LogsPanel.vue",
+        "FusionLive同步工具/app/runtime_logging.py",
+        "codex-wechat/wechat_local/operational_logging.py",
+        "管理中心/manager.py",
+        "FusionLive同步工具/app/progress.py",
+        "FusionLive同步工具/app/reporting.py",
+        "FusionLive同步工具/app/analysis_worker.py",
+        "绿联云上传工具/main.py",
+        "绿联云上传工具/nas_sync.py",
+        "codex-wechat/wechat_local/listener.py",
+        "codex-wechat/wechat_local/state.py",
+        "Ima知识库管理/ima_manager/watch.py",
+        "Ima知识库管理/ima_manager/__main__.py",
+        "Ima知识库管理/ima_manager/sync.py",
+        "管理中心/server.py",
+        "管理中心/web/src/LogClearButton.vue",
+        "管理中心/web/src/ImaWorkspace.vue"
+      ],
+      "tests": {
+        "sync": [
+          "tests/test_runtime_logging.py",
+          "tests/test_analysis_worker.py",
+          "tests/test_scheduler.py"
+        ],
+        "manager": [
+          "tests/test_log_*.py",
+          "tests/test_manager.py",
+          "tests/test_network.py"
+        ],
+        "nas": [
+          "test_upload.py"
+        ],
+        "wechat": [
+          "tests/test_capture_and_diagnostics.py",
+          "tests/test_local.py"
+        ],
+        "ima": [
+          "tests/test_daily_watch.py",
+          "tests/test_sync.py",
+          "tests/test_config_cli.py"
+        ]
+      },
+      "ui": [
+        "check-ima.cjs"
+      ]
+    },
+    "download-diagnostics": {
+      "description": "下载失败响应的限量脱敏诊断、只读台账分析及短响应探测",
+      "sources": [
+        "FusionLive同步工具/app/download_diagnostics.py",
+        "FusionLive同步工具/devtools/diagnose_downloads.py"
+      ],
+      "tests": {
+        "sync": [
+          "tests/test_download_diagnostics.py",
+          "tests/test_network_retries.py",
+          "tests/test_download_resume.py",
+          "tests/test_download_forbidden.py",
+          "tests/test_sync.py"
+        ]
+      }
+    },
+    "download": {
+      "description": "下载窗口、网络重试、选择、大文件有界分段、HTTP Range字节续传及中断恢复和调度",
+      "sources": [
+        "FusionLive同步工具/app/sync.py",
+        "FusionLive同步工具/app/fusion_client.py",
+        "FusionLive同步工具/app/chunked_download.py",
+        "FusionLive同步工具/app/scheduler.py",
+        "FusionLive同步工具/app/workflow.py",
+        "FusionLive同步工具/app/inventory.py",
+        "FusionLive同步工具/app/progress.py"
+      ],
+      "tests": {
+        "sync": [
+          "tests/test_sync.py",
+          "tests/test_workflow.py",
+          "tests/test_inventory.py",
+          "tests/test_scheduler.py",
+          "tests/test_network_retries.py",
+          "tests/test_download_*.py",
+          "tests/test_interleaved_downloads.py",
+          "tests/test_stop_recovery.py",
+          "tests/test_safe_shutdown.py"
+        ]
+      }
+    },
+    "directory": {
+      "description": "新旧版保留、目录归档、迁移恢复及跨工具文件引用",
+      "sources": [
+        "FusionLive同步工具/app/file_layout.py",
+        "FusionLive同步工具/app/local_reconcile.py",
+        "FusionLive同步工具/app/history_retention.py",
+        "FusionLive同步工具/app/paths.py",
+        "FusionLive同步工具/app/path_maintenance*.py",
+        "FusionLive同步工具/app/migration_recovery.py",
+        "FusionLive同步工具/app/history_repair.py",
+        "FusionLive同步工具/app/ledger.py"
+      ],
+      "tests": {
+        "sync": [
+          "tests/test_file_layout.py",
+          "tests/test_local_reconcile.py",
+          "tests/test_history_retention.py",
+          "tests/test_predecessor_retention.py",
+          "tests/test_download_replacement.py",
+          "tests/test_download_receipts.py",
+          "tests/test_migration_recovery.py",
+          "tests/test_path_maintenance.py",
+          "tests/test_history_repair.py",
+          "tests/test_export_layout.py"
+        ],
+        "nas": [
+          "test_*.py"
+        ],
+        "wechat": [
+          "tests/test_sync_files.py"
+        ],
+        "manager": [
+          "tests/test_file_catalog.py",
+          "tests/test_download_stats.py"
+        ]
+      }
+    },
+    "analysis": {
+      "description": "解析队列、PCF/IDF算法、压缩包缓存与包内索引",
+      "sources": [
+        "FusionLive同步工具/app/analysis_*.py",
+        "FusionLive同步工具/app/analysis_cache.json",
+        "FusionLive同步工具/app/local_analysis.py",
+        "FusionLive同步工具/app/archive_*.py",
+        "FusionLive同步工具/app/parse_*.py",
+        "FusionLive同步工具/app/equipment_reader.py",
+        "FusionLive同步工具/app/weld_classification.py",
+        "FusionLive同步工具/app/prefab_rules_*.py",
+        "FusionLive同步工具/material_split_rules.json"
+      ],
+      "tests": {
+        "sync": [
+          "tests/test_analysis_*.py",
+          "tests/test_local_analysis.py",
+          "tests/test_archive_*.py",
+          "tests/test_pcf_weld_location.py",
+          "tests/test_embedded_prefab.py",
+          "tests/test_valid_subtotals.py",
+          "tests/test_classification_subtotals.py",
+          "tests/test_briefing_model_merge.py"
+        ],
+        "wechat": [
+          "tests/test_sync_files.py"
+        ],
+        "manager": [
+          "tests/test_file_catalog.py"
+        ]
+      }
+    },
+    "briefing": {
+      "description": "日报、管道简报、定时生成和推送保护",
+      "sources": [
+        "FusionLive同步工具/app/briefing.py",
+        "FusionLive同步工具/app/ledger_workbook.py",
+        "FusionLive同步工具/wechat_push/*",
+        "管理中心/*runner.py",
+        "管理中心/codex_project_tools.py",
+        "FusionLive同步工具/app/push_setup.py"
+      ],
+      "tests": {
+        "sync": [
+          "tests/test_briefing*.py",
+          "tests/test_daily_push.py",
+          "tests/test_file_statistics.py",
+          "tests/test_ledger_workbook.py",
+          "tests/test_wechat_briefing.py",
+          "tests/test_wechat_test_send.py",
+          "tests/test_publication_jobs.py"
+        ],
+        "manager": [
+          "tests/test_publications.py",
+          "tests/test_codex_project_tools.py"
+        ]
+      },
+      "ui": [
+        "check-publication-settings.cjs"
+      ]
+    },
+    "messages": {
+      "description": "微信监听、引用与@、消息去重、停止和重试",
+      "sources": [
+        "codex-wechat/wechat_local/listener.py",
+        "codex-wechat/wechat_local/message_content.py",
+        "codex-wechat/wechat_local/spool.py",
+        "codex-wechat/wechat_local/wechat_capture.py",
+        "codex-wechat/wechat_local/state.py",
+        "codex-wechat/wechat_local/__main__.py",
+        "codex-wechat/wechat_local/wechat_db/*"
+      ],
+      "tests": {
+        "wechat": [
+          "tests/test_local.py",
+          "tests/test_quoted_messages.py",
+          "tests/test_mention_recovery.py",
+          "tests/test_notice_retries.py",
+          "tests/test_capture_and_diagnostics.py",
+          "tests/test_progress_and_mentions.py",
+          "tests/test_empty_listener.py",
+          "tests/test_stop.py"
+        ]
+      }
+    },
+    "codex": {
+      "description": "Codex会话、共享后端、IPC、上下文和超时集成",
+      "sources": [
+        "管理中心/codex_chat.py",
+        "管理中心/codex_runtime.py",
+        "codex-wechat/wechat_local/app_server.py",
+        "codex-wechat/wechat_local/shared_backend.py",
+        "codex-wechat/wechat_local/codex_*.py",
+        "codex-wechat/wechat_local/project_context.py",
+        "codex-wechat/wechat_local/memory.py"
+      ],
+      "tests": {
+        "wechat": [
+          "tests/test_app_server.py",
+          "tests/test_shared_backend.py",
+          "tests/test_chat_memory.py",
+          "tests/test_progress_and_mentions.py"
+        ],
+        "manager": [
+          "tests/test_codex_chat.py",
+          "tests/test_wechat_sessions.py"
+        ]
+      }
+    },
+    "catalogue": {
+      "description": "授权文件检索、业务分类、包内成员和文件发送",
+      "sources": [
+        "FusionLive同步工具/app/business_type.py",
+        "FusionLive同步工具/document_coding_rules.json",
+        "codex-wechat/wechat_local/sync_files.py",
+        "codex-wechat/wechat_local/file_*.py",
+        "管理中心/file_catalog.py",
+        "管理中心/web/src/FilesPanel.vue"
+      ],
+      "tests": {
+        "sync": [
+          "tests/test_business_type.py",
+          "tests/test_unit_reference.py",
+          "tests/test_archive_index.py"
+        ],
+        "wechat": [
+          "tests/test_sync_files.py",
+          "tests/test_file_transfer.py",
+          "tests/test_file_cleanup.py",
+          "tests/test_upload_limit.py"
+        ],
+        "manager": [
+          "tests/test_file_catalog.py"
+        ]
+      },
+      "ui": [
+        "check-archive-ledger-ui.cjs"
+      ]
+    },
+    "upload": {
+      "description": "NAS上传、续传、历史归档和日志",
+      "sources": [
+        "绿联云上传工具/main.py",
+        "绿联云上传工具/nas_sync.py",
+        "绿联云上传工具/nas_remote_hash.py",
+        "绿联云上传工具/setup_nas_ssh.py",
+        "绿联云上传工具/nas_history.py"
+      ],
+      "tests": {
+        "nas": [
+          "test_*.py"
+        ],
+        "manager": [
+          "tests/test_manager.py::ManagerTests::test_nas_receives_single_log_capture_flag",
+          "tests/test_log_progress.py"
+        ]
+      }
+    },
+    "harness": {
+      "description": "测试选择器、运行入口与配置清单",
+      "sources": [
+        "tools/*.py",
+        "tools/test_suites.json",
+        "*/pytest.ini",
+        "管理中心/log_tools.py"
+      ],
+      "tests": {
+        "harness": [
+          "tools/tests/test_test_runner.py"
+        ]
+      }
+    },
+    "file-counts": {
+      "description": "Small checks for shared physical file counts and read-only live text",
+      "sources": [
+        "FusionLive同步工具/app/file_inventory.py",
+        "管理中心/daily_publications.py"
+      ],
+      "tests": {
+        "manager": [
+          "tests/test_download_stats.py",
+          "tests/test_manager.py::ManagerTests::test_overview_is_read_only_and_reports_missing_cache_as_unknown",
+          "tests/test_manager.py::ManagerTests::test_overview_reads_latest_generated_snapshot_without_rescanning",
+          "tests/test_publications.py"
+        ],
+        "sync": [
+          "tests/test_daily_push.py::DailyPushTests::test_live_text_reads_current_entities_without_generating_fixed_files"
+        ]
+      },
+      "ui": [
+        "check-overview-cards.cjs"
+      ]
+    },
+    "daily-text": {
+      "description": "Text generation, send-time backups and scheduling without spreadsheet/rendering suites",
+      "sources": [
+        "FusionLive同步工具/app/reporting.py",
+        "FusionLive同步工具/app/wechat_delivery.py",
+        "FusionLive同步工具/app/briefing_schedule.py",
+        "FusionLive同步工具/app/publication_worker.py",
+        "FusionLive同步工具/app/push_settings.py",
+        "管理中心/daily_publications.py",
+        "管理中心/web/src/PublicationsPanel.vue",
+        "管理中心/web/src/ConfigPanel.vue",
+        "管理中心/web/check-publication-settings.cjs"
+      ],
+      "tests": {
+        "sync": [
+          "tests/test_daily_push.py",
+          "tests/test_wechat_briefing.py",
+          "tests/test_publication_jobs.py",
+          "tests/test_stop_recovery.py",
+          "tests/test_migration_recovery.py::RecoverySchedulingTests"
+        ],
+        "manager": [
+          "tests/test_publications.py"
+        ]
+      },
+      "ui": [
+        "check-publication-settings.cjs"
+      ]
+    },
+    "deployment": {
+      "description": "部署清理的预览、隔离、数据保护和CMD入口",
+      "sources": [
+        "tools/cleanup_deployment.py",
+        "tools/prepare_deployment.py",
+        "清理多余文件.cmd",
+        "管理中心/build_deployment.py"
+      ],
+      "tests": {
+        "harness": [
+          "tools/tests/test_cleanup_deployment.py",
+          "tools/tests/test_prepare_deployment.py",
+          "tools/tests/test_test_runner.py"
+        ]
+      }
+    },
+    "nas-config": {
+      "description": "NAS SSH配置、显式连接检查、服务器首次认证向导和前端状态展示",
+      "sources": [
+        "管理中心/web/src/NasHashSettings.vue",
+        "管理中心/web/src/ConfigPanel.vue"
+      ],
+      "tests": {
+        "manager": [
+          "tests/test_manager.py"
+        ]
+      },
+      "ui": [
+        "check-nas-settings.cjs"
+      ]
+    }
+  }
+}

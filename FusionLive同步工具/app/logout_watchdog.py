@@ -1,6 +1,6 @@
 """Independent logout helper. Session cookies travel through stdin, never a file."""
 
-from app_paths import HOME, CODE
+from paths import HOME, CODE
 import json
 import queue
 import sys

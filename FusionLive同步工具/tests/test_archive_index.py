@@ -79,6 +79,33 @@ class ArchiveIndexTests(unittest.TestCase):
         self.assertEqual(current_members(self.base),[])
         export_csv(self.ledger,supplemental=False,quiet=True)
 
+    def test_explicit_ledger_source_is_read_only_and_does_not_use_default_database(self):
+        alternate = self.base / 'runtime/alternate.sqlite3'
+        with closing(sqlite3.connect(alternate)) as db:
+            self.ledger.db.backup(db)
+            with db:
+                db.execute('UPDATE files SET active=0')
+        before = alternate.read_bytes()
+        self.assertEqual(current_members(self.base, ledger_path=alternate), [])
+        self.assertEqual(len(current_members(self.base)), 5)
+        self.assertEqual(alternate.read_bytes(), before)
+
+    def test_local_collection_can_read_inactive_packages_but_never_history(self):
+        with self.ledger.db:
+            self.ledger.db.execute('UPDATE files SET active=0')
+        with self.queue.db:
+            self.queue.db.execute('UPDATE jobs SET active=0')
+        self.assertEqual(current_members(self.base), [])
+        self.assertEqual(len(current_members(self.base, include_inactive=True)), 5)
+        history = self.base / 'history'
+        history.mkdir()
+        archived = history / self.path.name
+        self.path.rename(archived)
+        with self.ledger.db:
+            self.ledger.db.execute('UPDATE files SET path=?', ('history/' + archived.name,))
+        self.assertEqual(current_members(self.base, include_inactive=True), [])
+        self.assertTrue(archived.is_file())
+
     def test_member_or_parent_tampering_and_cache_escape_are_rejected(self):
         member=next(r for r in current_members(self.base) if r['filename'].endswith('.dwg'))
         path=Path(member['path']);original=path.read_bytes()

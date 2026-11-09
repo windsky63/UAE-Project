@@ -24,6 +24,7 @@ class AnalysisSettingsTests(unittest.TestCase):
             queue.counts.return_value = {}
             output = io.StringIO()
             with patch('analysis_worker.AnalysisQueue',return_value=queue), \
+                 patch('analysis_worker.analysis_paused_for_schedule',return_value=False), \
                  patch('analysis_worker.cached_snapshot', return_value=({}, {'weld_table_file':'fixture.csv','welds':[]}, None)), \
                  redirect_stdout(output):
                 self.assertEqual(main(['--base-dir',str(base),'--database',str(base/'runtime/ledger.sqlite3')]),0)

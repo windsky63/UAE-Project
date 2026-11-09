@@ -11,6 +11,7 @@ from wechat_local.delivery import DeliveryNotSent
 from wechat_local.listener import Listener
 from wechat_local.spool import DesktopSpool
 from wechat_local.state import State
+from wechat_local.codex_settings import CodexServiceError
 
 
 @pytest.fixture
@@ -154,6 +155,24 @@ def test_emergency_pause_does_not_consume_reply_retry_budget(notice_rig, monkeyp
     listener.deliver()
     assert not driver.sent and state.job(event['id'])['status'] == 'generated'
     assert listener.spool.db.execute('SELECT count(*) FROM ui_actions').fetchone()[0] == 0
+
+
+def test_failed_connection_notice_retries_after_restart_without_replaying_model(notice_rig):
+    listener, driver, state, event, clock, path = notice_rig
+    state.set_job(event['id'], 'running')
+    state.set_job(event['id'], 'failed', error='sanitized account failure')
+    listener.failure_notice(state.job(event['id']), CodexServiceError('account'))
+    original = driver.sent[0]
+    assert listener.spool.pending_notices()
+    listener.spool.db.close()
+    listener.spool = DesktopSpool(str(path))
+    driver.failure = None
+    clock[0] += listener.config.send_retry_seconds
+    listener.retry_notices()
+    listener.retry_notices()
+    assert driver.sent == [original, original]
+    assert not listener.spool.pending_notices()
+    assert state.job(event['id'])['status'] == 'failed'
 
 
 @pytest.mark.parametrize('stage', ['queued', 'thinking', 'querying'])

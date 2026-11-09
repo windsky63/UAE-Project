@@ -1,5 +1,5 @@
 
-from app_paths import HOME, CODE
+from paths import HOME, CODE
 import argparse
 import copy
 import csv

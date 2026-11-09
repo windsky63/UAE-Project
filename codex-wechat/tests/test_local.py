@@ -13,7 +13,7 @@ import pytest
 from wechat_local.config import LocalConfig, WechatChat, load_config
 from wechat_local.codex_runner import CodexRunner
 from wechat_local.delivery import DeliveryNotSent
-from wechat_local.codex_settings import CodexConfigTimeoutError, CodexGenerationTimeoutError
+from wechat_local.codex_settings import CodexConfigTimeoutError, CodexGenerationTimeoutError, CodexServiceError, CodexConnectionTimeoutError
 from wechat_local.listener import Listener
 from wechat_local.spool import DesktopSpool
 from wechat_local.state import State
@@ -52,6 +52,31 @@ class Runner:
     def generate(self, event, chat, recent, workspace):
         self.calls.append((event, chat, recent, workspace))
         return '测试回复', {'input_tokens': 50, 'output_tokens': 10}
+
+
+def test_capture_failure_does_not_block_existing_reply_or_other_chats(rig, monkeypatch):
+    config, driver, runner, spool, state, listener = rig
+    from unittest.mock import Mock
+    capture = Mock(side_effect=[OSError('database temporarily locked'), None])
+    monkeypatch.setattr(driver, 'capture', capture)
+    deliver = Mock()
+    monkeypatch.setattr(listener, 'deliver', deliver)
+    listener.tick()
+    assert capture.call_count == 2
+    deliver.assert_called_once()
+
+
+def test_context_export_failure_does_not_leave_running_job(rig, monkeypatch):
+    config, driver, runner, spool, state, listener = rig
+    from unittest.mock import Mock
+    message = event()
+    state.archive(message)
+    state.enqueue(message)
+    monkeypatch.setattr(state, 'export_chat', Mock(side_effect=OSError('disk full')))
+    listener.start_next()
+    assert state.job(message['id'])['status'] == 'failed'
+    assert 'disk full' in state.job(message['id'])['error']
+    assert listener.active is None
 
 
 @pytest.fixture
@@ -213,13 +238,14 @@ def test_queue_wait_does_not_expire_job_and_notices_share_identity(rig, monkeypa
                for row in state.recent('group', 20, 'unused'))
 
 
-def test_reply_lifetime_still_expires_after_execution_starts(rig, monkeypatch):
+def test_reply_lifetime_still_expires_after_generation_finishes(rig, monkeypatch):
     config, driver, runner, spool, state, listener = rig
     clock = task_clock(monkeypatch)
     config.reply_max_age_seconds = 10
     driver.events = [event()]
     listener.tick()
     listener.active[1].result(timeout=3)
+    listener.finish_active()
     clock[0] += timedelta(seconds=11)
     listener.tick()
     assert state.job('1')['status'] == 'expired'
@@ -390,6 +416,51 @@ def test_configuration_timeout_is_not_reported_as_generation_timeout(rig):
     assert '尚未启动模型生成' in error
     assert '生成超过' not in error
     assert '具体阶段未确定' in listener.generation_error(TimeoutError())
+
+
+@pytest.mark.parametrize('failure', [CodexServiceError('account'), CodexServiceError('network'), CodexConnectionTimeoutError('retry deadline')])
+def test_connection_failure_notifies_once_in_existing_reply_format(rig, failure):
+    config, driver, runner, spool, state, listener = rig
+    message = event()
+    state.enqueue(message)
+    state.set_job('1', 'running')
+    future = Future()
+    future.set_exception(failure)
+    listener.active = ('1', future)
+    listener.finish_active()
+    listener.finish_active()
+    listener.retry_notices()
+    assert state.job('1')['status'] == 'failed'
+    assert len(driver.sent) == 1
+    text = driver.sent[0][1]
+    assert text.startswith('任务编号：1\n回复对象：@alice\n任务结束时间：')
+    assert text.endswith('回答如下：\n连接 Codex 失败，请检查网络或账号。')
+    assert driver.mentions == ['alice']
+    assert not spool.pending_notices()
+    assert state.db.execute('SELECT count(*) FROM qa_memory').fetchone()[0] == 0
+
+
+def test_connection_failure_respects_send_switch(rig):
+    config, driver, runner, spool, state, listener = rig
+    config.allow_send = False
+    state.enqueue(event())
+    state.set_job('1', 'running')
+    state.set_job('1', 'failed')
+    listener.failure_notice(state.job('1'), CodexServiceError('account'))
+    assert not driver.sent and not spool.pending_notices()
+
+
+def test_long_successful_task_uses_finish_time_for_delivery_lifetime(rig):
+    _, driver, _, _, state, listener = rig
+    state.enqueue(event())
+    state.set_job('1', 'running')
+    with state.db:
+        state.db.execute('UPDATE jobs SET started_at=? WHERE id=?',
+            ((datetime.now(timezone.utc)-timedelta(hours=3)).isoformat(), '1'))
+    state.set_job('1', 'generated', reply='long task answer')
+    listener.deliver()
+    assert state.job('1')['status'] == 'confirmed'
+    assert driver.sent[0][1].endswith('回答如下：\nlong task answer')
 
 
 @pytest.mark.parametrize('submitted', [False, True])

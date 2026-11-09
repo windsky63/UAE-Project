@@ -6,5 +6,18 @@
   "stop_hour_beijing": 0,
   "chunk_bytes": 1048576,
   "retry_attempts": 2,
-  "preserve_previous_versions": true
+  "preserve_previous_versions": true,
+  "verification_method": "ssh",
+  "remote_hash": {
+    "enabled": true,
+    "host": "192.168.32.177",
+    "port": 22,
+    "username": "",
+    "root_path": "",
+    "identity_file": "",
+    "known_hosts_file": "",
+    "python_command": "python3",
+    "timeout_seconds": 3600,
+    "fallback_to_smb": false
+  }
 }

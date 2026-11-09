@@ -3,3 +3,4 @@
 -r FusionLive同步工具/requirements.txt
 -r 绿联云上传工具/requirements.txt
 -r codex-wechat/requirements.txt
+-r Ima知识库管理/requirements.txt

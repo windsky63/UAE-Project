@@ -1,13 +1,14 @@
 """Persistent send-only settings; schedules are always interpreted in Beijing time."""
 
-from app_paths import HOME, CODE
+from paths import HOME, CODE
 import json
 import os
 from pathlib import Path
 from analysis_settings import validate as validate_analysis
 
 DEFAULT = {'enabled': True, 'recipients': [], 'prepare_time_beijing': '10:40',
-           'send_time_beijing': '11:00', 'send_window_minutes': 5, 'uia_profile': 'wechat_push/uia_profile.json',
+           'send_time_beijing': '11:00', 'text_send_time_beijing': None, 'briefing_send_time_beijing': None,
+           'send_window_minutes': 5, 'uia_profile': 'wechat_push/uia_profile.json',
            'briefing_title': '管道资料同步简报', 'publish_text': True, 'publish_briefing': True,
            'test_recipient': '文件传输助手'}
 
@@ -52,11 +53,31 @@ def clean_test_recipient(value):
     return value.strip()
 
 
+def validate_times(data):
+    for name in ('text_send_time_beijing','briefing_send_time_beijing'):
+        if data[name] is None:
+            data[name] = data['send_time_beijing']
+    for name in ('prepare_time_beijing','send_time_beijing','text_send_time_beijing','briefing_send_time_beijing'):
+        text = data[name]
+        if not isinstance(text,str) or len(text)!=5 or text[2]!=':':
+            raise ValueError('定时时间格式应为HH:MM')
+        hour,minute = (int(v) for v in text.split(':'))
+        if not (0<=hour<24 and 0<=minute<60):
+            raise ValueError('定时时间无效')
+    if data['prepare_time_beijing']>=data['briefing_send_time_beijing']:
+        raise ValueError('简报生成时间必须早于管道简报发送时间')
+    if type(data['send_window_minutes']) is not int or not 1<=data['send_window_minutes']<=10:
+        raise ValueError('发送窗口须在1至10分钟之间')
+
+
 def load_settings(base=HOME):
     path = Path(base) / 'runtime/wechat_push.json'
     saved = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
     text, briefing = publication_flags(saved)
     data = {**DEFAULT, **saved, 'publish_text': text, 'publish_briefing': briefing, 'enabled': text or briefing}
+    for name in ('text_send_time_beijing','briefing_send_time_beijing'):
+        if data[name] is None:
+            data[name] = data['send_time_beijing']
     data.update(validate_analysis(data))
     data['briefing_title'] = clean_title(data['briefing_title'])
     data['test_recipient'] = clean_test_recipient(data['test_recipient'])
@@ -71,17 +92,7 @@ def load_settings(base=HOME):
     known = data.get('known_chats', [])
     if not isinstance(known, list) or any(not isinstance(n, str) or not n.strip() or len(n) > 200 for n in known):
         raise ValueError('已保存会话列表格式无效')
-    for name in ('prepare_time_beijing', 'send_time_beijing'):
-        text = data[name]
-        if not isinstance(text, str) or len(text) != 5 or text[2] != ':':
-            raise ValueError('定时时间格式应为HH:MM')
-        hour, minute = (int(v) for v in text.split(':'))
-        if not (0 <= hour < 24 and 0 <= minute < 60):
-            raise ValueError('定时时间无效')
-    if data['prepare_time_beijing'] >= data['send_time_beijing']:
-        raise ValueError('生成时间必须早于发送时间')
-    if isinstance(data['send_window_minutes'], bool) or not isinstance(data['send_window_minutes'], int) or not 1 <= data['send_window_minutes'] <= 10:
-        raise ValueError('发送窗口须在1至10分钟之间')
+    validate_times(data)
     return data
 
 
@@ -89,6 +100,7 @@ def save_settings(data, base=HOME):
     data = {**data, **validate_analysis(data)}
     text, briefing = publication_flags(data)
     data = {**DEFAULT, **data, 'publish_text': text, 'publish_briefing': briefing, 'enabled': text or briefing}
+    validate_times(data)
     data['briefing_title'] = clean_title(data['briefing_title'])
     data['test_recipient'] = clean_test_recipient(data['test_recipient'])
     recipient_flags(data, '')

@@ -11,7 +11,7 @@ sys.path.insert(0, str(HOME/'app'))
 import preflight
 import create_test_briefing
 from wechat_test_send import latest_artifacts
-from output_paths import check_output_directory
+from paths import check_output_directory
 
 
 def main(output_dir=None):

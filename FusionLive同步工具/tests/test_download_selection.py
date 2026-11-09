@@ -15,7 +15,7 @@ class DownloadSelectionTests(unittest.TestCase):
         self.ledger = Ledger(base/'ledger.sqlite3', base_dir=base)
         self.addCleanup(self.ledger.close)
         self.ledger.cycle = 9
-        for table in ('download_update_priority', 'download_unit_priority'):
+        for table in ('download_update_priority', 'download_unit_priority', 'download_run_skips'):
             self.ledger.db.execute(f'CREATE TEMP TABLE {table}(project,file_id,PRIMARY KEY(project,file_id))')
 
     def add(self, identifier, document=None, folder='folder'):
@@ -69,6 +69,7 @@ class DownloadSelectionTests(unittest.TestCase):
                  ('inactive-link', "UPDATE document_files SET active=0 WHERE file_id='inactive-link'"),
                  ('inactive-file', "UPDATE files SET active=0 WHERE id='inactive-file'"),
                  ('permanent', "UPDATE files SET retryable=0 WHERE id='permanent'"),
+                 ('forbidden-this-run', "INSERT INTO download_run_skips VALUES('p','forbidden-this-run')"),
                  ('exhausted', "UPDATE files SET attempts=3 WHERE id='exhausted'")]
         for identifier, sql in cases:
             self.add(identifier)

@@ -10,6 +10,47 @@ from analysis_worker import ProgressLog
 
 
 class RuntimeLoggingTests(unittest.TestCase):
+    def test_nonzero_failure_summary_is_never_sampled(self):
+        gate=EventGate(clock=lambda:0)
+        message='文件结束：a.pdf；失败 2'
+        self.assertEqual(gate.accept(message),[message])
+        self.assertEqual(gate.accept(message),[message])
+
+    def test_suppression_summary_keeps_last_context_and_flushes_at_phase_boundary(self):
+        gate=EventGate(clock=lambda:0)
+        gate.accept('下载完成：first.pdf')
+        gate.accept('下载完成：last.pdf')
+        events=gate.accept('阶段开始：解析')
+        self.assertIn('last.pdf',events[0])
+        self.assertIn('1 条',events[0])
+        self.assertEqual(events[-1],'阶段开始：解析')
+        self.assertEqual(gate.drain(),[])
+
+    def test_progress_phase_transition_does_not_reuse_previous_file_or_speed(self):
+        from progress import Progress
+        progress=Progress()
+        progress.accept('@@PROGRESS {"phase":"文件下载","current_file":"old.pdf","current_bytes":5,"current_total":10,"recent_bytes_per_second":100,"download_total_files":2}')
+        progress.accept('@@PROGRESS {"phase":"目录盘点","directories":3}')
+        self.assertNotIn('current_file',progress.values)
+        self.assertNotIn('recent_bytes_per_second',progress.values)
+        self.assertNotIn('download_total_files',progress.values)
+        self.assertEqual(progress.values['directories'],3)
+        progress.accept('@@PROGRESS {"directories":4}')
+        self.assertEqual(progress.values['phase'],'目录盘点')
+        self.assertEqual(progress.values['directories'],4)
+
+    def test_log_write_failure_keeps_download_console_output_available(self):
+        from unittest.mock import Mock
+        console=io.StringIO()
+        disk=Mock()
+        disk.write.side_effect=PermissionError('fixture busy log')
+        tee=Tee(console,disk)
+        tee.write('first event\nsecond event\n')
+        tee.finish()
+        self.assertIn('first event',console.getvalue())
+        self.assertIn('second event',console.getvalue())
+        self.assertEqual(console.getvalue().count('fixture busy log'),1)
+
     def test_busy_files_are_sampled_and_suppression_totals_are_exact(self):
         clock = [0]
         gate = EventGate(clock=lambda: clock[0])

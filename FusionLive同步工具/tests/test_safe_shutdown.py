@@ -1,5 +1,6 @@
 """Offline shutdown lifecycle checks; no downloads, credentials or WeChat."""
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import queue
 import subprocess
@@ -18,6 +19,9 @@ HOME = Path(__file__).resolve().parents[1]
 
 class SafeShutdownTests(unittest.TestCase):
     def setUp(self):
+        clock = patch('analysis_worker.now', return_value=datetime(2026, 11, 1, 11, tzinfo=timezone(timedelta(hours=8))))
+        clock.start()
+        self.addCleanup(clock.stop)
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.base = Path(self.temporary.name)
@@ -63,6 +67,8 @@ class SafeShutdownTests(unittest.TestCase):
 import sys,time
 from pathlib import Path
 import analysis_worker as worker
+from datetime import datetime, timedelta, timezone
+worker.now=lambda: datetime(2026,11,1,11,tzinfo=timezone(timedelta(hours=8)))
 base=Path(sys.argv[1])
 class FixtureQueue:
     version='fixture'
@@ -71,6 +77,9 @@ class FixtureQueue:
     def __init__(self,*args,**kwargs): pass
     def recover(self): pass
     def discover(self): return 0
+    def discover_if_changed(self): return self.discover()
+    def snapshot_pending(self): return False
+    def mark_exported(self): pass
     def process_next(self):
         if (base/'started').exists(): raise AssertionError('next job must not start')
         (base/'started').touch()

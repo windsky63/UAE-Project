@@ -52,6 +52,8 @@ def diagnose(root):
         report['warnings'].append('psutil不可用；仍可查看锁和日志，不安装任何依赖。')
     candidates = [base / 'logs' / at.date().isoformat() / 'scheduler.log',
                   runtime / 'file_analysis/progress.log', runtime / 'file_analysis/worker.log']
+    candidates += [root / 'logs' / at.date().isoformat() / 'sync' / name
+                   for name in ('scheduler.log', 'analysis.log', 'analysis-worker.log', 'run.log')]
     admin_runtime = root / '管理中心/runtime'
     if admin_runtime.is_dir():
         candidates += sorted(admin_runtime.glob('*-sync-stop-*.log'), key=lambda path: path.stat().st_mtime, reverse=True)[:1]

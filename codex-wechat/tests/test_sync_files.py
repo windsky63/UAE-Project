@@ -68,7 +68,9 @@ def _check_extracted_catalog(base):
     with closing(sqlite3.connect(root/'runtime/ledger.sqlite3')) as db, db:
         db.execute('INSERT INTO files VALUES(?,?,?,?,?,?,?,?)',('p','archive',archive.name,
             'downloads/'+archive.name,archive.stat().st_size,hashlib.sha256(archive.read_bytes()).hexdigest(),'done',1))
-    result=subprocess.run([sys.executable,str(actual/'main.py'),'analysis_worker','--database',str(root/'runtime/ledger.sqlite3'),
+    # This catalog test must run outside the production download-window gate.
+    launcher = "import sys,runpy; from pathlib import Path; from datetime import datetime,timezone,timedelta; sys.path.insert(0,str(Path(sys.argv[1]).parent/'app')); import fusion_client; fusion_client.now=lambda:datetime(2026,11,2,12,tzinfo=timezone(timedelta(hours=8))); runpy.run_path(sys.argv.pop(1),run_name='__main__')"
+    result=subprocess.run([sys.executable,'-c',launcher,str(actual/'main.py'),'analysis_worker','--database',str(root/'runtime/ledger.sqlite3'),
         '--base-dir',str(root)],capture_output=True,text=True,encoding='utf-8',timeout=20)
     assert result.returncode==0,result.stdout+result.stderr
     before=(root/'runtime/ledger.sqlite3').read_bytes()

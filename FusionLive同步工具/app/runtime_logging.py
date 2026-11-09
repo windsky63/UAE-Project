@@ -7,6 +7,18 @@ import threading
 import time
 
 
+def operation_log(name, base):
+    """Shared project logs when bundled; retain standalone tool support."""
+    from datetime import datetime, timezone, timedelta
+    base = Path(base).resolve()
+    project = base.parent
+    bundled = (project / '管理中心').is_dir() and (project / 'codex-wechat').is_dir()
+    root = project / 'logs' if bundled else base / 'logs'
+    day = datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d')
+    folder = root / day / 'sync' if bundled else root / day
+    return folder / name
+
+
 MAX_BYTES = 5 * 1024 * 1024
 BACKUPS = 4
 _locks = {}
@@ -64,16 +76,22 @@ class EventGate:
         self.interval, self.clock = interval, clock
         self.detailed = os.environ.get('FUSIONLIVE_LOG_DETAIL') == '1' if detailed is None else detailed
         self.entries = OrderedDict()
+        self.latest = {}
 
     def summary(self, key, count):
-        return f'日志合并：{key}，另有 {count} 条同类记录；逐文件信息见台账/解析结果。'
+        latest = self.latest.get(key,'')
+        return (f'日志合并：{key}，另有 {count} 条同类记录；逐文件信息见台账/解析结果。'
+                +(f'；最后一条：{latest}' if latest else ''))
 
     def accept(self, message, *, important=False, key=None, interval=None):
-        evidence = re.sub(r'失败\s*\d+', '', message)
+        if re.search(r'^(?:阶段开始|阶段完成|本轮结束|本次运行结束|任务启动|任务结束)[:：（]',message):
+            return self.drain()+[message]
+        evidence = re.sub(r'(?:失败|冲突)\s*[:：]?\s*0\b', '', message)
         evidence = evidence.replace('含待核对冲突', '').replace('核对重复和冲突', '')
         if important or self.detailed or any(word in evidence for word in IMPORTANT):
             return [message]
         key = key or next((p for p in SAMPLED if message.startswith(p)), message)
+        self.latest[key] = message
         period = interval if interval is not None else (300 if key == '空闲等待' else self.interval)
         at = self.clock()
         if key not in self.entries:
@@ -82,6 +100,7 @@ class EventGate:
                 old, (_, count) = self.entries.popitem(last=False)
                 if count:
                     result.append(self.summary(old, count))
+                self.latest.pop(old,None)
             self.entries[key] = (at, 0)
             return result + [message]
         last, count = self.entries[key]
@@ -94,4 +113,5 @@ class EventGate:
     def drain(self):
         result = [self.summary(key, count) for key, (_, count) in self.entries.items() if count]
         self.entries.clear()
+        self.latest.clear()
         return result

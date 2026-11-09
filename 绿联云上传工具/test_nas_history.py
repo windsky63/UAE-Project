@@ -3,6 +3,7 @@ from contextlib import redirect_stdout
 import hashlib
 import io
 from pathlib import Path
+from types import SimpleNamespace
 import sqlite3
 from unittest.mock import patch
 
@@ -155,8 +156,8 @@ class UnifiedHistoryTests(unittest.TestCase):
         item=self.case.add();self.u.one(item)
         path=self.legacy(item.relative,item.path.read_bytes())
         linked=path.parent
-        actual=Path.is_symlink
-        with patch.object(Path,'is_symlink',lambda p: plain(p)==str(linked) or actual(p)):
+        actual=Path.lstat
+        with patch.object(Path,'lstat',lambda p: SimpleNamespace(st_mode=0,st_file_attributes=0x400) if plain(p)==str(linked) else actual(p)):
             proposal=nas_history.plan(self.u,[item])
         self.assertEqual([e['status'] for e in proposal['entries']],['conflict'])
         self.assertTrue(path.exists())

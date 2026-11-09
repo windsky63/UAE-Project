@@ -76,7 +76,7 @@ class StopRecoveryTests(unittest.TestCase):
         child.kill.assert_called_once()
         self.assertIsNone(service.process)
 
-    def test_scheduled_report_refreshes_daily_text_without_download_process(self):
+    def test_scheduled_images_do_not_pre_generate_daily_text_even_with_legacy_flag(self):
         import briefing
         database = self.runtime / 'ledger.sqlite3'
         database.touch()
@@ -85,9 +85,9 @@ class StopRecoveryTests(unittest.TestCase):
              patch('reporting.try_write_push_text') as text, \
              patch('briefing.generate', return_value=dict(workbook='fixture.xlsx', images=[], ready=True)) as report:
             briefing.main(['--database', str(database), '--daily-text'])
-        factory.assert_called_once_with(database, base_dir=self.base)
-        text.assert_called_once_with(ledger)
-        ledger.close.assert_called_once()
+        factory.assert_not_called()
+        text.assert_not_called()
+        ledger.close.assert_not_called()
         report.assert_called_once()
 
     def test_daily_text_failure_does_not_cancel_pipeline_report(self):

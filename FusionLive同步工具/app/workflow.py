@@ -1,6 +1,6 @@
 """Persist inventory -> initial bulk download -> daily maintenance in SQLite."""
 
-from app_paths import HOME, CODE
+from paths import HOME, CODE
 import json
 import os
 from fusion_client import now
@@ -9,7 +9,7 @@ from paths import resolve_path, exports_dir
 
 STAGES = {'inventory': '阶段一：全量清单与关联盘点',
           'scope_review': '全量盘点已完成，等待人工确认施工范围',
-          'bulk_download': '阶段二：集中下载（不重新盘点）',
+          'bulk_download': '阶段二：集中下载',
           'maintenance': '阶段三：每日盘点与增量补下载'}
 
 
@@ -30,7 +30,7 @@ class Workflow:
                      snapshot['id'] if snapshot else None, cycle['cycle'] if cycle else None, now().isoformat()))
         self.reload()
         from reporting import establish_report_baseline
-        establish_report_baseline(ledger, at=now())
+        establish_report_baseline(ledger, at=now(), include_local=False)
         self.apply_download_plan()
         # Older releases downloaded the whole project without a scope checkpoint.
         # After this update they must stop for review, retaining every existing file.
@@ -139,6 +139,42 @@ class Workflow:
         self.ledger.root(self.client, rescan=True, checkpoint=checkpoint, **options)
         self.reload()
 
+    def refresh_failed_folders(self, check=lambda: None):
+        """Refresh only failing folders, at most once per folder per 30 minutes."""
+        with self.ledger.db:
+            self.ledger.db.execute('''CREATE TABLE IF NOT EXISTS association_folder_refreshes(
+                project TEXT,folder_id TEXT,checked_at TEXT,PRIMARY KEY(project,folder_id))''')
+        folders = self.ledger.all('''SELECT DISTINCT d.folder_id,r.checked_at FROM documents d
+            LEFT JOIN association_folder_refreshes r ON r.project=d.project AND r.folder_id=d.folder_id
+            WHERE d.project=? AND d.active=1 AND d.related_state='failed' ORDER BY d.folder_id''', (self.project,))
+        from datetime import datetime
+        for folder in folders:
+            at = now()
+            if folder['checked_at'] and 0 <= (at-datetime.fromisoformat(folder['checked_at'])).total_seconds() < 1800:
+                continue
+            check()
+            records, seen, expected, start = [], set(), None, 0
+            while True:
+                check()
+                total, page = self.client.document_page(folder['folder_id'], start, 100)
+                if (not isinstance(total, int) or total < 0 or (expected is not None and total != expected)
+                        or start + len(page) > total or (start < total and not page)):
+                    raise RuntimeError('失败目录刷新分页不完整或总数变化，保留原清单并稍后重试。')
+                identifiers = [record.get('id') for record in page]
+                if any(not identifier for identifier in identifiers) or len(set(identifiers)) != len(identifiers) or seen.intersection(identifiers):
+                    raise RuntimeError('失败目录刷新包含重复或缺失的版本ID，保留原清单。')
+                records.extend(page)
+                seen.update(identifiers)
+                expected, start = total, start + len(page)
+                if start == total:
+                    break
+            check()
+            self.ledger.replace_folder_records(self.project, folder['folder_id'], records)
+            with self.ledger.db:
+                self.ledger.db.execute('INSERT OR REPLACE INTO association_folder_refreshes VALUES(?,?,?)',
+                                       (self.project, folder['folder_id'], at.isoformat()))
+            print(f'失败目录版本清单已刷新：{folder["folder_id"]}，{len(records)}条；旧版本停止重试，未变化的核对进度保留。', flush=True)
+
     def inventory_ready(self):
         snapshot = self.ledger.one('SELECT status FROM snapshots WHERE id=? AND project=?', (self.state['snapshot_id'], self.project))
         cycle = self.ledger.one('SELECT * FROM refresh_cycles WHERE project=?', (self.project,))
@@ -176,22 +212,42 @@ class Workflow:
         return self.ledger.one("SELECT COUNT(*) n FROM files WHERE project=? AND active=1 AND status NOT IN ('done','restricted') AND NOT(status='failed' AND retryable=0)", (self.project,))['n']
 
     def repair_missing_downloads(self):
-        if (self.ledger.base_dir/'runtime/layout.pending').exists():
-            from file_layout import prepare_downloads
-            prepare_downloads(self.ledger)
+        from file_layout import has_pending_publications, prepare_downloads_or_defer
+        if ((self.ledger.base_dir/'runtime/layout.pending').exists()
+                or has_pending_publications(self.ledger)):
+            if not prepare_downloads_or_defer(self.ledger):
+                # The migration journal owns paths that may currently be staged.
+                # Do not reset those done records while independent HTTP continues.
+                return 0
         # A cheap existence/size check; full SHA-256 verification remains an offline command.
-        count = 0
+        from reporting import local_presence
+        checks = {}
+        local_presence(self.ledger, now(), checks=checks)
+        missing = []
+        # Probe the filesystem before opening a write transaction. A missing
+        # early file must not hold the SQLite writer lock for the entire scan.
+        for item in self.ledger.all("SELECT * FROM files WHERE project=? AND active=1 AND status='done'", (self.project,)):
+            key = (item['project'], item['id'], item['path'], item['sha256'], item['bytes'])
+            if key in checks:
+                if not checks[key]:
+                    missing.append((self.project, item['id'], item['path'], item['sha256']))
+                continue
+            path = resolve_path(item['path'], self.ledger.base_dir) if item['path'] else None
+            if not path or not item['sha256'] or not path.is_file() or path.stat().st_size != item['bytes']:
+                missing.append((self.project, item['id'], item['path'], item['sha256']))
         with self.ledger.db:
-            for item in self.ledger.all("SELECT * FROM files WHERE project=? AND active=1 AND status='done'", (self.project,)):
-                path = resolve_path(item['path'], self.ledger.base_dir) if item['path'] else None
-                if not path or not item['sha256'] or not path.is_file() or path.stat().st_size != item['bytes']:
-                    self.ledger.db.execute("UPDATE files SET status='pending',attempts=0,error='本地文件缺失或大小不符',downloaded_at=NULL,download_date_source=NULL WHERE project=? AND id=?", (self.project, item['id']))
-                    count += 1
+            count = self.ledger.db.executemany("UPDATE files SET status='pending',attempts=0,error='本地文件缺失或大小不符',downloaded_at=NULL,download_date_source=NULL WHERE project=? AND id=? AND status='done' AND path IS ? AND sha256 IS ?", missing).rowcount
         if self.state['phase'] == 'idle' and self.unfinished():
             self.save(phase='download')
         return count
 
     def finish_download(self):
+        from file_layout import has_pending_publications
+        if ((self.ledger.base_dir/'runtime/layout.pending').exists()
+                or has_pending_publications(self.ledger)):
+            self.save(phase='download')
+            print('已校验文件仍待发布，保留下载阶段；下轮恢复，不重复下载。', flush=True)
+            return False
         remaining = self.unfinished()
         if remaining:
             self.save(phase='download')

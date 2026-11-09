@@ -3,7 +3,8 @@
 Run directories keep their own paths for existing audit readers. Hard links share
 the extracted bytes; a different volume falls back to copying, never to unpacking.
 """
-from contextlib import closing
+from collections import defaultdict
+from contextlib import ExitStack, closing
 import hashlib
 import json
 import os
@@ -125,7 +126,7 @@ def _legacy(cache, sha):
 def extract_cached(archive, destination, *, cache, sha, extractor, budget, audit, progress=None):
     from analysis_worker import worker_lock
     from local_analysis import MAX_ARCHIVE_EXPANDED_BYTES, MAX_ARCHIVE_ENTRIES
-    from output_paths import check_output_directory
+    from paths import check_output_directory
     cache = check_output_directory(cache, source_root=archive)
     destination = check_output_directory(destination, source_root=archive)
     budget = budget if budget is not None else dict(bytes=MAX_ARCHIVE_EXPANDED_BYTES, files=MAX_ARCHIVE_ENTRIES)
@@ -193,7 +194,48 @@ def _remove_tree(path, allowed):
     return 0
 
 
-def cleanup_history(queue):
+def _cleanup_lineages(queue):
+    """Use explicit platform lineage; filenames alone never prove succession."""
+    from archive_index import readonly
+    database = getattr(queue, 'database', queue.cache.parent / 'ledger.sqlite3')
+    with closing(readonly(database)) as db:
+        files = {(r['project'], r['id']): dict(r) for r in db.execute('SELECT * FROM files')}
+        own = defaultdict(set)
+        if db.execute("SELECT 1 FROM sqlite_master WHERE name='documents'").fetchone():
+            columns = {r[1] for r in db.execute('PRAGMA table_info(documents)')}
+            if {'project', 'id', 'first_id'} <= columns:
+                for row in db.execute('SELECT project,id,first_id FROM documents'):
+                    own[(row['project'], row['id'])].add(str(row['first_id'] or row['id']))
+    families = {}
+    for key, row in files.items():
+        family = (key[0], 'file', key[1])
+        if len(own[key]) == 1:
+            family = (key[0], 'document', next(iter(own[key])))
+        elif not own[key]:
+            data = json.loads(row.get('metadata') or '{}')
+            if data.get('firstVersionId'):
+                # Package attachment members must remain separate families.
+                family = (key[0], 'attachment', str(data['firstVersionId']),
+                          row.get('relation'), row['filename'].casefold())
+        families[key] = family
+    # Older catalogue migrations may have removed a file row while retaining
+    # its own-document version evidence. That explicit evidence is sufficient.
+    for key, first_ids in own.items():
+        if key not in families and len(first_ids) == 1:
+            families[key] = (key[0], 'document', next(iter(first_ids)))
+    return families, files
+
+
+def cleanup_history(queue, *, progress=None):
+    """Shared automatic/manual maintenance, excluding active file delivery."""
+    from analysis_worker import worker_lock
+    with worker_lock(queue.cache.parent / 'wechat_delivery') as acquired:
+        if not acquired:
+            raise ValueError('文件投递正在使用缓存，请稍后再清理。')
+        return _cleanup_history(queue, progress=progress)
+
+
+def _cleanup_history(queue, *, progress=None):
     """Remove obsolete extraction bytes only after a replacement is committed.
 
     Original downloads, JSON analysis reports and inventory rows are retained.
@@ -203,11 +245,59 @@ def cleanup_history(queue):
     from analysis_worker import worker_lock
     base = queue.cache.resolve()
     jobs_root = base / 'jobs'
+    log = progress or (lambda message: None)
+    log('核对下载台账、文档版本关联和解析任务')
+    families, files = _cleanup_lineages(queue)
+    active = list(queue.db.execute('SELECT * FROM jobs WHERE active=1'))
+    reports = {}
+
+    def report_for(row):
+        if row['key'] in reports:
+            return reports[row['key']]
+        report = None
+        if row['result_path'] and re.fullmatch(r'[0-9a-f]{64}', row['key']):
+            result = (base / row['result_path']).resolve()
+            if (result.is_relative_to(jobs_root / row['key'])
+                    and not (result.parent / 'extraction.cleaned').exists()):
+                try:
+                    report = json.loads(result.read_text(encoding='utf-8'))
+                    entries = report.get('files') if isinstance(report, dict) else None
+                    if (not isinstance(entries, list) or not entries or not isinstance(entries[0], dict)
+                            or (row['expected_sha'] and entries[0].get('sha256') != row['expected_sha'])):
+                        report = None
+                except (OSError, ValueError, TypeError):
+                    pass
+        reports[row['key']] = report
+        return report
+
+    completed = defaultdict(list)
+    current_ids = defaultdict(set)
+    for key, source in files.items():
+        if source['active']:
+            current_ids[families.get(key, (key[0], 'file', key[1]))].add(key[1])
+    by_id = set()
+    for row in active:
+        key = row['project'], row['file_id']
+        source = files.get(key)
+        if (row['state'] != 'done' or not source or not source['active'] or source['status'] != 'done'
+                or (source.get('sha256') and source['sha256'] != row['expected_sha'])
+                or report_for(row) is None):
+            continue
+        by_id.add(key)
+        completed[families.get(key, (key[0], 'file', key[1]))].append(row)
+    # Multiple current file IDs in one family are ambiguous. Preserve historical
+    # task directories until the platform association is unambiguous.
+    unique_families = {family for family, rows in completed.items()
+                       if len(current_ids[family]) == 1 and len({r['file_id'] for r in rows}) == 1}
     removed = 0
-    for row in queue.db.execute('''SELECT old.key FROM jobs old
-        WHERE old.active=0 AND EXISTS
-        (SELECT 1 FROM jobs current WHERE current.project=old.project
-         AND current.file_id=old.file_id AND current.active=1 AND current.state='done')'''):
+    checked = retained = 0
+    for row in queue.db.execute('SELECT key,project,file_id FROM jobs WHERE active=0'):
+        checked += 1
+        key = row['project'], row['file_id']
+        family = families.get(key, (key[0], 'file', key[1]))
+        if key not in by_id and family not in unique_families:
+            retained += 1
+            continue
         job_root = (jobs_root / row['key']).resolve()
         if not re.fullmatch(r'[0-9a-f]{64}', row['key']) or not job_root.is_relative_to(jobs_root):
             continue
@@ -220,18 +310,21 @@ def cleanup_history(queue):
                 cleaned = _remove_tree(run / 'extracted', jobs_root)
                 cleaned += _remove_tree(run / 'split_idf', jobs_root)
                 removed += cleaned
-    active = list(queue.db.execute('SELECT expected_sha,state,result_path FROM jobs WHERE active=1'))
-    if any(r['state'] != 'done' for r in active):
+                if cleaned:
+                    log(f'已清理旧任务解压目录：{row["key"][:12]}；{cleaned} 个目录')
+    log(f'旧任务核对：检查 {checked} 个；成功替代关系明确 {checked-retained} 个；关联不明确或新版未就绪，保留 {retained} 个')
+    archive_ids = {key for key, source in files.items() if source['active']
+                   and Path(source['filename']).suffix.lower() in ('.zip', '.7z')}
+    if (not archive_ids <= by_id or
+            any(r['state'] != 'done' or (r['project'], r['file_id']) not in by_id for r in active)):
+        log('共享解压缓存暂时保留：仍有任务未完成、源版本已变化或结果无法核验')
         return removed
     live = {r['expected_sha'] for r in active if r['expected_sha']}
     for row in active:
-        if not row['result_path']:
-            return removed
-        result = (base / row['result_path']).resolve()
-        if not result.is_relative_to(jobs_root):
-            return removed
         try:
-            report = json.loads(result.read_text(encoding='utf-8'))
+            report = report_for(row)
+            if report is None:
+                return removed
             live.update(r['sha256'] for r in report['files']
                         if r.get('sha256') and Path(r['path']).suffix.lower() in ('.zip', '.7z'))
         except (OSError, ValueError, KeyError, TypeError):
@@ -248,6 +341,7 @@ def cleanup_history(queue):
                 continue
             if match[1] not in live:
                 removed += _remove_tree(slot, cache)
+                log(f'已清理无引用共享解压缓存：{slot.name}')
                 continue
             try:
                 data = json.loads((slot / 'manifest.json').read_text(encoding='utf-8'))
@@ -264,7 +358,7 @@ def cleanup_history(queue):
 def main():
     import argparse
     from types import SimpleNamespace
-    from app_paths import HOME
+    from paths import HOME
     from analysis_worker import worker_lock
     from archive_index import readonly
     parser = argparse.ArgumentParser(description='清理已有成功替代版本的旧解压文件，保留原始压缩包和解析报告')
@@ -276,12 +370,20 @@ def main():
     if not database.is_file():
         print('未找到本地解析队列，没有可清理的历史解压文件。')
         return
-    with worker_lock(cache) as acquired:
-        if not acquired:
-            parser.exit(1, '后台解析正在运行，请安全停止后再单独清理。\n')
-        with closing(readonly(database)) as db:
-            count = cleanup_history(SimpleNamespace(cache=cache, db=db))
-        print(f'已清理旧版解压目录/缓存 {count} 个；原始压缩包、版本记录和解析报告保留。')
+    try:
+        with ExitStack() as stack:
+            for folder, name, label in ((cache, 'worker.lock', '后台解析'),
+                                        (cache.parent, 'sync.lock', '同步下载')):
+                if not stack.enter_context(worker_lock(folder, name)):
+                    raise ValueError(label+'正在运行，请安全停止后再单独清理。')
+            if (cache.parent / 'layout.pending').exists():
+                raise ValueError('文件迁移尚未完成，请先恢复迁移。')
+            with closing(readonly(database)) as db:
+                count = cleanup_history(SimpleNamespace(cache=cache, db=db,
+                    database=cache.parent / 'ledger.sqlite3'), progress=lambda text: print(text, flush=True))
+            print(f'已清理旧版解压目录/缓存 {count} 个；原始压缩包、版本记录和解析报告保留。', flush=True)
+    except (OSError, ValueError, sqlite3.Error) as exc:
+        parser.exit(1, '缓存清理未完成：'+str(exc)+'\n')
 
 
 if __name__ == '__main__':

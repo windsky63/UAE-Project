@@ -194,7 +194,7 @@ class WindowsUIASender:
             pattern.SetValue(name)
         except Exception:
             raise DeliveryNotSent('Cannot safely set the search control') from None
-        time.sleep(.8)
+        time.sleep(1.5)
         result_list = find_control(root, lambda c:aid(c, 'search_list'))
         if not result_list: raise DeliveryNotSent('Search results unavailable')
         results = []

@@ -11,6 +11,7 @@ import time
 import sqlite3
 
 from .codex_settings import CodexConfigTimeoutError, CodexGenerationTimeoutError, CodexIdleTimeoutError
+from .codex_settings import CodexConnectionTimeoutError, CodexServiceError
 from .app_server import CodexBackendTimeoutError, CodexBackendError
 from .desktop_guard import desktop_paused
 from . import file_transfer, file_cleanup
@@ -23,6 +24,9 @@ class Listener:
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='codex')
         self.active = None
         self._next_cleanup_check = 0
+        self._log_started=time.monotonic()
+        self._log_at=float('-inf')
+        self._intake_since_log=0
 
     def age(self, event, started_at=None):
         timestamp = datetime.fromisoformat((started_at or event['observed_at']).replace('Z', '+00:00'))
@@ -39,7 +43,10 @@ class Listener:
         # Freshness is checked on intake. Accepted pending jobs may wait without
         # consuming their execution/delivery lifetime, including across restart.
         if job is None or job['status'] != 'pending':
-            age = self.age(event, job['started_at'] if job is not None else None)
+            timestamp = job['started_at'] if job is not None else None
+            if job is not None and job['started_at'] and job['finished_at']:
+                timestamp = job['finished_at']
+            age = self.age(event, timestamp)
             if age < -30 or age > self.config.reply_max_age_seconds:
                 return False
         text = event['text'].strip()
@@ -50,15 +57,23 @@ class Listener:
             if not re.search(re.escape(mention) + r'(?=\s|$)', text):
                 return False
             text = re.sub(re.escape(mention) + r'(?=\s|$)', '', text).strip()
-            if not text or text.startswith('/'):
+            quote = event.get('quoted_message')
+            has_quote = isinstance(quote, dict) and bool(str(quote.get('text') or '').strip())
+            if (not text and not has_quote) or text.startswith('/'):
                 return False
         return True
 
     def tick(self):
         for chat in self.config.chats:
-            self.driver.capture(chat.id, self.spool)
+            try:
+                self.driver.capture(chat.id, self.spool)
+            except Exception:
+                # One unavailable chat/database must not starve completed replies
+                # or prevent the other chats from being captured this cycle.
+                logging.getLogger(__name__).exception('Capture failed: chat_id=%s; retry next cycle', chat.id)
         for event in self.spool.pending():
             self.state.archive(event)
+            self._intake_since_log += 1
             if self.eligible(event):
                 self.state.enqueue(event)
                 job = self.state.job(event['id'])
@@ -76,7 +91,15 @@ class Listener:
             try:
                 file_cleanup.run_if_due(self.config, self.state, self.spool)
             except (OSError, ValueError, sqlite3.Error) as exc:
-                logging.getLogger(__name__).warning('Outgoing cleanup failed: %s', type(exc).__name__)
+                logging.getLogger(__name__).exception('Outgoing cleanup failed: %s', exc)
+        at=time.monotonic()
+        if at-self._log_at>=30:
+            distribution={row[0]:row[1] for row in self.state.db.execute('SELECT status,count(*) FROM jobs GROUP BY status')}
+            logging.getLogger(__name__).info('微信监听心跳：会话数=%s；本间隔接收=%s；任务台账分布=%s；当前任务=%s；本轮存活=%.1f秒；存活不代表任务已完成',
+                len(self.config.chats),self._intake_since_log,json.dumps(distribution,ensure_ascii=False),
+                self.active[0] if self.active else '无',at-self._log_started)
+            self._intake_since_log=0
+            self._log_at=at
 
     def finish_active(self):
         if self.active and self.active[1].done():
@@ -100,7 +123,9 @@ class Listener:
                                    memory_note=getattr(result, 'memory_note', None),
                                    file_result=getattr(result, 'file_result', None))
             except Exception as exc:
+                logging.getLogger(__name__).exception('Generation failed: job_id=%s', identifier)
                 self.state.set_job(identifier, 'failed', error=self.generation_error(exc))
+                self.failure_notice(self.state.job(identifier), exc)
             self.active = None
 
     def workspace_for(self, chat_id):
@@ -113,9 +138,11 @@ class Listener:
                 self.state.export_memory(chat_id, self.workspace_for(chat_id))
             except (OSError, ValueError) as exc:
                 # Sending was already confirmed; a regenerable MD failure must not undo it.
-                logging.getLogger(__name__).warning('Chat memory export failed: %s', type(exc).__name__)
+                logging.getLogger(__name__).exception('Chat memory export failed: chat_id=%s; %s', chat_id, exc)
 
     def generation_error(self, exc):
+        if isinstance(exc, CodexConnectionTimeoutError):
+            return f'TimeoutError: Codex 网络连接连续失败超过 {self.config.codex_connect_timeout_seconds} 秒，请检查网络或账号'
         if isinstance(exc, CodexBackendError):
             return str(exc)
         if isinstance(exc, CodexBackendTimeoutError):
@@ -128,7 +155,24 @@ class Listener:
             return f'TimeoutError: Codex 连续 {self.config.codex_idle_timeout_seconds} 秒未报告进度，且没有正在执行的查询工具'
         if isinstance(exc, TimeoutError):
             return 'TimeoutError: 任务执行超时，具体阶段未确定'
-        return type(exc).__name__
+        return f'{type(exc).__name__}: {exc}'
+
+    def failure_notice(self, job, exc):
+        if isinstance(exc, (CodexConnectionTimeoutError, CodexServiceError)):
+            message = '连接 Codex 失败，请检查网络或账号。'
+        else:
+            return
+        if not self.config.allow_send or not self.config.codex_enabled:
+            return
+        event = json.loads(job['event'])
+        if not self.eligible(event, job):
+            return
+        command = dict(id='failed:' + job['id'], chat_id=event['chat_id'],
+                       text=self.task_header(job, event, finished=True) + '回答如下：\n' + message)
+        chat = next(c for c in self.config.chats if c.id == event['chat_id'])
+        if self.config.mention_reply_sender and chat.kind == 'group':
+            command['mention_user'] = event.get('sender_id') or event['sender']
+        self.send_notice(job, 'failed', command)
 
     def report_progress(self):
         progress = getattr(self.runner, 'progress', None)
@@ -171,13 +215,13 @@ class Listener:
             job = self.state.job(identifier)
             # Do not send obsolete "queued" after starting, or "thinking"
             # after generation has finished. A failed notice never holds a reply.
-            expected_status = 'pending' if stage == 'queued' else 'running'
+            expected_status = 'pending' if stage == 'queued' else 'failed' if stage == 'failed' else 'running'
             if job is None or job['status'] != expected_status:
                 self.spool.finish_notice(command['id'])
                 continue
             if stage == 'querying' and not self.config.query_progress_enabled:
                 continue
-            if stage != 'queued' and self.active and self.active[0] == identifier and self.active[1].done():
+            if stage not in ('queued', 'failed') and self.active and self.active[0] == identifier and self.active[1].done():
                 self.spool.finish_notice(command['id'])
                 continue
             event = json.loads(job['event'])
@@ -231,13 +275,19 @@ class Listener:
         job = self.state.job(job['id'])
         # Stable hash allows arbitrary display names without allowing path traversal.
         workspace = self.workspace_for(chat.id)
-        self.export_memory(chat.id)
-        self.state.export_chat(chat.id, workspace / 'memory.sqlite3', include_memory=self.config.chat_memory_enabled)
-        recent = self.state.recent(chat.id, self.config.recent_messages, event['id'])
-        context = self.state.file_selection(chat.id, file_transfer.sender_key(event))
-        if context and (datetime.now(timezone.utc).timestamp() - context.get('created', 0)) < 900:
-            event = dict(event, file_selection=context)
-        future = self.executor.submit(self.runner.generate, event, chat, recent, workspace)
+        try:
+            self.export_memory(chat.id)
+            self.state.export_chat(chat.id, workspace / 'memory.sqlite3', include_memory=self.config.chat_memory_enabled)
+            recent = self.state.recent(chat.id, self.config.recent_messages, event['id'])
+            context = self.state.file_selection(chat.id, file_transfer.sender_key(event))
+            if context and (datetime.now(timezone.utc).timestamp() - context.get('created', 0)) < 900:
+                event = dict(event, file_selection=context)
+            future = self.executor.submit(self.runner.generate, event, chat, recent, workspace)
+        except Exception as exc:
+            logging.getLogger(__name__).exception('Job startup failed: job_id=%s', job['id'])
+            self.state.set_job(job['id'], 'failed', error=self.generation_error(exc))
+            self.failure_notice(self.state.job(job['id']), exc)
+            return
         self.active = (job['id'], future)
         # A slow or failed UI acknowledgement must not delay model startup.
         self.acknowledge(event, job)
@@ -322,6 +372,9 @@ class Listener:
                 self.export_memory(job['chat_id'])
 
     def close(self):
+        request_stop = getattr(self.runner, 'request_stop', None)
+        if request_stop:
+            request_stop()
         self.executor.shutdown(wait=True, cancel_futures=True)
         close = getattr(self.runner, 'close', None)
         if close:

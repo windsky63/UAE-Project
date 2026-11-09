@@ -1,5 +1,5 @@
 """One local publication job per process; timer threads never render or drive WeChat."""
-from app_paths import HOME, CODE
+from paths import HOME, CODE
 from pathlib import Path
 from datetime import datetime
 import faulthandler

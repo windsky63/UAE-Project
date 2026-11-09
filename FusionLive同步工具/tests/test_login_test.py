@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 
 from fusion_client import FusionClient, LOCAL, WindowClosed
 from ledger import Ledger
-from login_test import TestClient, check_test_window, download_one, load_window, save_window
+from login_test import TestClient as LoginClient, check_test_window, download_one, load_window, save_window
 import logout_watchdog
 
 
@@ -54,7 +54,7 @@ class LoginTestTests(unittest.TestCase):
         with patch('login_test.RUNTIME', self.runtime), patch('fusion_client.RUNTIME', self.runtime), \
                 patch('login_test.now', return_value=self.at(23)), patch('fusion_client.now', return_value=self.at(23)):
             normal = FusionClient('fake', 'fake')
-            test = TestClient('fake', 'fake', manual_override=True)
+            test = LoginClient('fake', 'fake', manual_override=True)
             try:
                 with self.assertRaises(WindowClosed):
                     normal.check_access_window()

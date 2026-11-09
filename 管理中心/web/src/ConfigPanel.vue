@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import ActionIcon from './ActionIcon.vue'
 import HelpTip from './HelpTip.vue'
 import TimePickerField from './TimePickerField.vue'
+import NasHashSettings from './NasHashSettings.vue'
 const props=defineProps({tool:String,api:Function})
 const emit=defineEmits(['notice'])
 const firstSetup=ref(false)
@@ -10,8 +11,9 @@ const discoveredAccessDirs=ref([])
 const data=ref(null), revision=ref(''), busy=ref(false), failure=ref(''), chatEdit=ref(null), editIndex=ref(-1)
 const sourceIds=computed(()=>data.value?.sync_sources?.map(s=>s.id)||[])
 const titles={sync:'下载与简报设置',nas:'上传设置',wechat:'微信与 Codex 设置'}
-async function load(){busy.value=true;try{const result=await props.api('/config?tool='+props.tool);data.value=result.data;discoveredAccessDirs.value=result.discovered_access_dirs||[];revision.value=result.revision;firstSetup.value=props.tool==='wechat'&&result.exists===false;failure.value=''}catch(e){failure.value=e.message}finally{busy.value=false}}
-async function save(){busy.value=true;try{const result=await props.api('/config',{method:'POST',body:JSON.stringify({tool:props.tool,data:data.value,revision:revision.value})});data.value=result.data;revision.value=result.revision;firstSetup.value=false;failure.value='';emit('notice','配置已保存；运行中的工具需安全停止后重新启动。')}catch(e){failure.value=e.message;emit('notice',e.message,true)}finally{busy.value=false}}
+function inheritTimes(){if(props.tool==='sync'&&data.value){data.value.text_send_time_beijing??=data.value.send_time_beijing;data.value.briefing_send_time_beijing??=data.value.send_time_beijing}}
+async function load(){busy.value=true;try{const result=await props.api('/config?tool='+props.tool);data.value=result.data;inheritTimes();discoveredAccessDirs.value=result.discovered_access_dirs||[];revision.value=result.revision;firstSetup.value=props.tool==='wechat'&&result.exists===false;failure.value=''}catch(e){failure.value=e.message}finally{busy.value=false}}
+async function save(){busy.value=true;try{const result=await props.api('/config',{method:'POST',body:JSON.stringify({tool:props.tool,data:data.value,revision:revision.value})});data.value=result.data;inheritTimes();revision.value=result.revision;firstSetup.value=false;failure.value='';emit('notice',props.tool==='sync'?'配置已保存；推送时间由常驻调度自动读取，其他运行设置需安全重启。':'配置已保存；运行中的工具需安全停止后重新启动。');return true}catch(e){failure.value=e.message;emit('notice',e.message,true);return false}finally{busy.value=false}}
 function editChat(chat,index){editIndex.value=index;chatEdit.value=chat?JSON.parse(JSON.stringify(chat)):{id:'chat-'+Date.now(),name:'',username:'',kind:'group',reply:false,persona:'用简洁、准确的中文回复。',sync_sources:[]}}
 function commitChat(){if(!chatEdit.value.id.trim()||!chatEdit.value.name.trim())return;if(editIndex.value<0)data.value.chats.push(chatEdit.value);else data.value.chats[editIndex.value]=chatEdit.value;chatEdit.value=null}
 function adjustPrewarm(value){if(value===''||value==null)return;const ratio=Number(value);if(!Number.isFinite(ratio))return;if(ratio<=1){data.value.codex_session_prewarm=false;return}if(Number(data.value.codex_session_prewarm_percent)>=ratio)data.value.codex_session_prewarm_percent=Math.max(1,ratio-15)}
@@ -33,7 +35,9 @@ onMounted(load)
         <v-alert type="info" variant="tonal" density="compact">PCF 预制／安装分类使用设备连接坐标算法及 260818 预制率规则，保留命中规则编号；原 PCF 位置标记不再作为分类结果。</v-alert>
         <v-divider/>
         <v-text-field v-model="data.briefing_title" label="管道简报标题" maxlength="100"/>
-        <div class="settings-pair"><TimePickerField v-model="data.prepare_time_beijing" label="简报生成时间（北京）" :disabled="busy"/><TimePickerField v-model="data.send_time_beijing" label="推送时间（北京）" :disabled="busy"/></div>
+        <TimePickerField v-model="data.prepare_time_beijing" label="简报生成时间（北京）" :disabled="busy"/>
+        <div class="settings-pair"><TimePickerField v-model="data.text_send_time_beijing" label="推送文发送时间（北京）" :disabled="busy"/><TimePickerField v-model="data.briefing_send_time_beijing" label="管道简报发送时间（北京）" :disabled="busy"/></div>
+        <p class="text-caption text-secondary">生成开始时间须早于管道简报发送时间。日报快照按生成时间产生；文字提前发送时在发送前生成。前端与发送读取同一快照，当天已提交或结果待核对的内容不因改时间自动重发。</p>
         <v-combobox v-model="data.recipients" label="推送会话" placeholder="输入完整会话名称后回车" multiple chips closable-chips/>
         <div class="switch-line"><div><strong>推送文字日报</strong><p>按已保存的会话名单发布每日下载情况。</p></div><v-switch v-model="data.publish_text" aria-label="推送文字日报"/></div>
         <div class="switch-line"><div><strong>推送简报图片</strong><p>发布主表截图，详细数据保留在 Excel 中。</p></div><v-switch v-model="data.publish_briefing" aria-label="推送简报图片"/></div>
@@ -47,6 +51,7 @@ onMounted(load)
         <div class="settings-pair"><v-text-field v-model.number="data.retry_attempts" label="失败重试次数" type="number" min="1" max="5"/><v-select v-model="data.chunk_bytes" :items="[{title:'256 KiB',value:262144},{title:'1 MiB',value:1048576},{title:'4 MiB',value:4194304},{title:'8 MiB',value:8388608}]" label="传输分块大小"/></div>
         <div class="switch-line"><div><strong>保留历史版本</strong><p>保留原有上传策略中的历史版本。</p></div><v-switch v-model="data.preserve_previous_versions" aria-label="保留历史版本"/></div>
         <p class="text-caption text-secondary">上传时段固定为每天 12:00—次日 00:00。保存配置不会连接 NAS。</p>
+        <NasHashSettings v-if="data.remote_hash" :settings="data.remote_hash" :method="data.verification_method" :api="api" :save-config="save" :reload-config="load" @method="value=>{data.verification_method=value;data.remote_hash.enabled=value==='ssh';data.remote_hash.fallback_to_smb=false}" @notice="(...args)=>emit('notice',...args)"/>
       </div>
       <div v-else class="settings-form">
         <div class="switch-line"><div><strong>启用 Codex 回复</strong><p>仅为已启用回复的会话生成结果。</p></div><v-switch v-model="data.codex_enabled" aria-label="启用 Codex 回复"/></div>
@@ -66,8 +71,8 @@ onMounted(load)
           <v-text-field v-model.number="data.codex_session_prewarm_percent" label="提前创建比例（%）" type="number" min="1" max="98" :disabled="!data.codex_session_prewarm" hint="必须小于轮换比例；创建未完成时，切换仍可能需要等待。" persistent-hint/>
           <div class="settings-pair"><v-text-field v-model.number="data.codex_context_window_tokens" label="上下文窗口 Token 数（0 为自动）" type="number" min="0" max="10000000" hint="仅用于比例计算，不改变模型窗口；0 采用 Codex 报告值，未报告时可按实际模型填写。" persistent-hint/><v-text-field v-model.number="data.codex_session_unknown_max_turns" label="用量未知时最多复用轮数" type="number" min="2" max="500" hint="仅在缺少上下文用量或窗口数据时使用，默认 20 轮。" persistent-hint/></div>
         </template>
-        <div class="settings-pair"><v-text-field v-model="data.codex_model" label="Codex 模型（留空使用默认）"/><v-text-field v-model.number="data.codex_timeout_seconds" label="单次任务超时（秒）" type="number" min="5" max="1800"/></div>
-        <v-text-field v-model.number="data.codex_idle_timeout_seconds" label="无进度超时（秒，0 为关闭）" type="number" min="0" max="1800" hint="默认 300 秒；正在执行查询工具时不触发无进度超时，总时限仍然有效。" persistent-hint/>
+        <div class="settings-pair"><v-text-field v-model="data.codex_model" label="Codex 模型（留空使用默认）"/><v-text-field v-model.number="data.codex_timeout_seconds" label="单次任务超时（秒，0 为不限时）" type="number" min="0" max="1800"/></div>
+        <v-text-field v-model.number="data.codex_idle_timeout_seconds" label="无进度超时（秒，0 为关闭）" type="number" min="0" max="1800" hint="默认关闭，不因正常思考或回复慢中止；网络或账号故障单独判断。" persistent-hint/>
         <v-text-field v-model.number="data.reply_max_age_seconds" label="消息回复有效期（秒）" type="number" min="10" max="3600" hint="排队不计时；任务开始后计算生成及发送重试时间。接收时仍会过滤过旧消息。" persistent-hint/>
         <div class="settings-pair"><v-text-field v-model.number="data.send_max_attempts" label="发送最多尝试次数（含首次）" type="number" min="1" max="10"/><v-text-field v-model.number="data.send_retry_seconds" label="发送重试间隔（秒）" type="number" min="1" max="300"/></div>
         <p class="text-caption text-secondary">确认未发送的最终回复会重试；发送结果不确定时核对聊天记录，不重复提交。</p>

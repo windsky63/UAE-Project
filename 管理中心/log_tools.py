@@ -7,6 +7,38 @@ from pathlib import Path
 import subprocess
 import sys
 import uuid
+import logging
+import re
+
+
+def redact(value):
+    pattern = r'''(?i)((?:["']?(?:password|api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|secret)["']?)\s*[:=]\s*)("[^"\r\n]*"|'[^'\r\n]*'|Bearer\s+[^\s,;}]+|[^\s,;}&]+)'''
+    def replace(match):
+        hidden = '"[已隐藏]"' if match[2].startswith('"') else "'[已隐藏]'" if match[2].startswith("'") else '[已隐藏]'
+        return match[1]+hidden
+    return re.sub(pattern,replace,str(value))
+
+
+def captured_line(path, text, at, max_bytes=5*1024*1024, backups=4):
+    """Bound task output and preserve source timestamps; add capture time otherwise."""
+    path=Path(path)
+    text=redact(text.rstrip('\r\n'))
+    if not text:
+        return
+    if not re.match(r'^\[(?:\d{4}-\d\d-\d\d|\d\d-\d\d \d\d:|\d\d:\d\d:)',text):
+        text=f'[{at}] '+text
+    data=(text+'\n').encode('utf-8')
+    if len(data)>max_bytes:
+        data=data[:max_bytes-96].decode('utf-8',errors='ignore').encode('utf-8')+b'\n[log line truncated; original exceeds size limit]\n'
+    path.parent.mkdir(parents=True,exist_ok=True)
+    if path.exists() and path.stat().st_size+len(data)>max_bytes:
+        path.with_name(path.stem+f'.{backups}.log').unlink(missing_ok=True)
+        for number in range(backups-1,0,-1):
+            old=path.with_name(path.stem+f'.{number}.log')
+            if old.exists():old.replace(path.with_name(path.stem+f'.{number+1}.log'))
+        path.replace(path.with_name(path.stem+'.1.log'))
+    with path.open('ab') as stream:
+        stream.write(data)
 
 
 HOME=Path(__file__).resolve().parent
@@ -15,16 +47,22 @@ HOME=Path(__file__).resolve().parent
 def log_files(directory, recursive=False):
     """Never follow directory aliases into downloads, state, or another tree."""
     directory = Path(directory)
-    if (directory.is_symlink() or directory.is_junction() or
-            directory.resolve() != directory.absolute() or not directory.is_dir()):
-        return
-    for path in directory.iterdir():
-        if path.is_symlink() or path.is_junction():
-            continue
-        if recursive and path.is_dir():
-            yield from log_files(path, True)
-        elif path.is_file() and path.suffix.lower() == '.log':
-            yield path
+    try:
+        if (directory.is_symlink() or directory.is_junction() or
+                directory.resolve() != directory.absolute() or not directory.is_dir()):
+            return
+        for path in directory.iterdir():
+            try:
+                if path.is_symlink() or path.is_junction():
+                    continue
+                if recursive and path.is_dir():
+                    yield from log_files(path, True)
+                elif path.is_file() and path.suffix.lower() == '.log':
+                    yield path
+            except OSError as exc:
+                logging.getLogger(__name__).warning('日志路径无法读取：%s；%s', path, exc)
+    except OSError as exc:
+        logging.getLogger(__name__).warning('日志目录无法读取：%s；%s', directory, exc)
 
 
 def normalize_logs(root=None):
@@ -74,13 +112,13 @@ def normalize_logs(root=None):
     return report
 
 
-def run_tests(tool='manager',log=None):
+def run_tests(tool='manager',log=None,*,full=False):
     folder=HOME if tool=='manager' else HOME.parent/'FusionLive同步工具'
     output=Path(log) if log else folder/'runtime'/'tests-utf8.log'
     output.parent.mkdir(parents=True,exist_ok=True)
     env={**os.environ,'PYTHONUTF8':'1','PYTHONIOENCODING':'utf-8','PYTHONUNBUFFERED':'1'}
-    if tool=='sync':env['PYTHONPATH']=str(folder/'app')
-    command=[sys.executable,'-m','unittest','discover','-s','tests']
+    command=[sys.executable,str(HOME.parent/'tools/run_tests.py'),'--component',tool]
+    if full:command.append('--full')
     with output.open('w',encoding='utf-8',newline='') as target:
         child=subprocess.Popen(command,cwd=folder,env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
             text=True,encoding='utf-8',bufsize=1,creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
@@ -99,8 +137,9 @@ if __name__=='__main__':
     parser.add_argument('action',choices=['normalize','test'])
     parser.add_argument('--tool',choices=['manager','sync'],default='manager')
     parser.add_argument('--log',type=Path)
+    parser.add_argument('--full',action='store_true',help='运行该组件完整回归；默认只运行快速检查')
     args=parser.parse_args()
     if args.action=='normalize':
         result=normalize_logs()
         print(json.dumps(result,ensure_ascii=False,indent=2))
-    else:raise SystemExit(run_tests(args.tool,args.log))
+    else:raise SystemExit(run_tests(args.tool,args.log,full=args.full))

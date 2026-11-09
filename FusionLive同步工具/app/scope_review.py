@@ -1,6 +1,6 @@
 """Offline project-wide inventory summaries for the operator's scope review."""
 
-from app_paths import HOME, CODE
+from paths import HOME, CODE
 import csv
 import json
 import os

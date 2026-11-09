@@ -20,3 +20,6 @@ include = ["wechat_local*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-p no:cacheprovider"
+norecursedirs = ["data", "runtime", "logs", ".venv*", "__pycache__"]

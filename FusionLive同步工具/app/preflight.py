@@ -1,6 +1,6 @@
 """Offline release integrity and runtime checks, before any FusionLive login."""
 
-from app_paths import HOME, CODE
+from paths import HOME, CODE
 import argparse
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
@@ -17,7 +17,7 @@ import sys
 import tempfile
 import time
 
-RELEASE_ID = '2026.10.30-extraction-cache.1'
+RELEASE_ID = '2026.11.04-owner-updates.1'
 MANIFEST = 'release_manifest.json'
 REQUIRED_FILES = {
     'app/path_maintenance_launcher.py',
@@ -25,6 +25,8 @@ REQUIRED_FILES = {
     '整理文件目录.cmd',
     'app/history_repair.py',
     'app/file_layout.py',
+    'app/local_reconcile.py',
+    'app/history_retention.py',
     'app/publication_worker.py',
     'app/ledger_workbook.py',
     'app/archive_index.py',
@@ -36,11 +38,11 @@ REQUIRED_FILES = {
     'app/weld_classification.py',
     'app/analysis_cache.json',
     'app/analysis_worker.py',
-    'app/app_paths.py',
     'app/briefing.py',
     'app/briefing_schedule.py',
     'app/business_type.py',
     'app/fusion_client.py',
+    'app/chunked_download.py',
     'app/gui.py',
     'app/inventory.py',
     'app/ledger.py',
@@ -48,7 +50,6 @@ REQUIRED_FILES = {
     'app/local_credentials.py',
     'app/login_test.py',
     'app/logout_watchdog.py',
-    'app/output_paths.py',
     'app/parse_idf_to_json.py',
     'app/parse_pcf_to_json.py',
     'app/paths.py',
@@ -87,12 +88,13 @@ REQUIRED_FILES = {
 }
 
 
-def run_checks(home=HOME, *, runtime=True, gui=False, wechat=False, expected_release=RELEASE_ID, progress=None):
+def run_checks(home=HOME, *, runtime=True, gui=False, wechat=False, expected_release=RELEASE_ID, progress=None, startup=False):
     progress = progress or (lambda message: None)
     progress('校验发布清单、程序大小和SHA256')
     home = Path(home).resolve()
     report = {'release': expected_release, 'checked_at_beijing': datetime.now(timezone(timedelta(hours=8))).isoformat(),
               'files_checked': 0, 'errors': [], 'warnings': [], 'network_accessed': False}
+    report['check_mode'] = 'download-startup' if startup else 'full'
     errors = report['errors']
     if sys.version_info < (3, 10):
         errors.append('需要 Python 3.10 或更高版本。')
@@ -105,8 +107,32 @@ def run_checks(home=HOME, *, runtime=True, gui=False, wechat=False, expected_rel
         files = manifest['files']
         if not isinstance(files, dict):
             raise ValueError('files must be a mapping')
-        for missing in sorted(REQUIRED_FILES - files.keys()):
+        # Overlay releases retain the server's login file, whose hash cannot be
+        # known by the builder. No program module may use this exemption.
+        preserved = manifest.get('preserved_local_files', [])
+        if not isinstance(preserved, list) or any(name != 'app/local_credentials.py' for name in preserved):
+            raise ValueError('invalid preserved local files')
+        preserved = set(preserved)
+        if preserved.intersection(files):
+            raise ValueError('preserved local file also has a release hash')
+        for missing in sorted(REQUIRED_FILES - files.keys() - preserved):
             errors.append('校验清单缺少必要项目：' + missing)
+        for name in sorted(preserved):
+            path = (home / name).resolve()
+            if not path.is_relative_to(home):
+                errors.append('服务器凭据路径越界：' + name)
+                continue
+            try:
+                data = path.read_bytes()
+            except OSError:
+                errors.append('服务器凭据缺失或无法读取：' + name + '；请恢复服务器原有凭据文件。')
+                continue
+            report['files_checked'] += 1
+            try:
+                compile(data, str(path), 'exec')
+            except (SyntaxError, ValueError):
+                errors.append('服务器凭据 Python 语法检查失败：' + name)
+        report['preserved_local_files'] = sorted(preserved)
         for name, reference in files.items():
             parts = PurePosixPath(name).parts
             allowed = len(parts) == 1 or (len(parts) == 2 and parts[0] in ('maintenance', 'wechat_push', 'app'))
@@ -147,7 +173,8 @@ def run_checks(home=HOME, *, runtime=True, gui=False, wechat=False, expected_rel
             report['requests'] = installed
         except (ImportError, metadata.PackageNotFoundError, ValueError):
             errors.append('requests 或其依赖不可用，请运行“maintenance/安装依赖.cmd”。')
-        for package, module in (('openpyxl', 'openpyxl'), ('Pillow', 'PIL'), ('py7zr', 'py7zr'), ('pandas', 'pandas'), ('numpy', 'numpy')):
+        packages = () if startup else (('openpyxl', 'openpyxl'), ('Pillow', 'PIL'), ('py7zr', 'py7zr'), ('pandas', 'pandas'), ('numpy', 'numpy'))
+        for package, module in packages:
             progress('加载依赖：'+package)
             try:
                 importlib.import_module(module)
@@ -157,14 +184,15 @@ def run_checks(home=HOME, *, runtime=True, gui=False, wechat=False, expected_rel
             except (ImportError, metadata.PackageNotFoundError, ValueError):
                 errors.append(package + ' 简报依赖不可用，请运行“maintenance/安装依赖.cmd”。')
         report['sqlite'] = sqlite3.sqlite_version
-        progress('检查Tcl/Tk及可选桌面组件')
-        try:
-            tkinter = importlib.import_module('tkinter')
-            report['tcl'] = tkinter.Tcl().call('info', 'patchlevel')
-        except Exception as exc:
-            message = '台账组件 Tcl/Tk 不可用：' + type(exc).__name__
-            (errors if gui else report['warnings']).append(message)
-        if os.name == 'nt':
+        if not startup:
+            progress('检查Tcl/Tk及可选桌面组件')
+            try:
+                tkinter = importlib.import_module('tkinter')
+                report['tcl'] = tkinter.Tcl().call('info', 'patchlevel')
+            except Exception as exc:
+                message = '台账组件 Tcl/Tk 不可用：' + type(exc).__name__
+                (errors if gui else report['warnings']).append(message)
+        if os.name == 'nt' and not startup:
             for module in ('uiautomation', 'win32clipboard', 'win32gui', 'win32api', 'win32process', 'psutil', 'pyperclip'):
                 if importlib.util.find_spec(module) is None:
                     (errors if wechat else report['warnings']).append('微信发送依赖不可用：' + module + '；请运行maintenance/安装依赖.cmd。')
@@ -179,14 +207,22 @@ def run_checks(home=HOME, *, runtime=True, gui=False, wechat=False, expected_rel
                 errors.append('目录不可写：' + str(folder))
         database = home / 'runtime' / 'ledger.sqlite3'
         if database.exists():
-            progress('只读检查下载台账完整性')
+            progress('只读探测下载台账及表访问' if startup else '只读检查下载台账完整性')
             try:
                 with closing(sqlite3.connect(database.as_uri() + '?mode=ro', uri=True, timeout=3)) as db:
-                    result = db.execute('PRAGMA quick_check').fetchall()
-                    if result != [('ok',)]:
-                        errors.append('SQLite 完整性检查失败，请保留数据库并检查备份。')
+                    if startup:
+                        db.execute('PRAGMA schema_version').fetchone()
+                        tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                        for table in ('files', 'documents', 'folders'):
+                            if table in tables:
+                                db.execute('SELECT 1 FROM '+table+' LIMIT 1').fetchall()
+                        report['database'] = '下载启动只读探测通过；未执行全库完整性扫描'
                     else:
-                        report['database'] = 'quick_check: ok（只读检查）'
+                        result = db.execute('PRAGMA quick_check').fetchall()
+                        if result != [('ok',)]:
+                            errors.append('SQLite 完整性检查失败，请保留数据库并检查备份。')
+                        else:
+                            report['database'] = 'quick_check: ok（只读检查）'
             except sqlite3.Error as exc:
                 errors.append('数据库只读检查失败：' + type(exc).__name__)
         else:
@@ -207,7 +243,7 @@ def check_before_login(*, cancelled=lambda: False, log=print, timeout=120, home=
     """
     if cancelled():
         raise CheckCancelled('启动检查已取消，本次未登录。')
-    command = _command or [sys.executable, '-u', str(Path(home)/'main.py'), 'preflight']
+    command = _command or [sys.executable, '-u', str(Path(home)/'main.py'), 'preflight', '--startup']
     env = dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUTF8='1')
     log('开始独立进程启动检查；检查期间不登录平台，最长等待'+str(timeout)+'秒。')
     with tempfile.TemporaryDirectory(prefix='fusion-preflight-') as directory:
@@ -251,12 +287,36 @@ def check_before_login(*, cancelled=lambda: False, log=print, timeout=120, home=
                 finally:
                     if child.poll() is None:
                         # This process performs offline checks only; it holds no platform session.
+                        # Windows venv python.exe can be a redirector. Stopping
+                        # only it leaves the actual interpreter holding stdout.
+                        descendants = []
+                        if os.name == 'nt':
+                            try:
+                                import psutil
+                                descendants = psutil.Process(child.pid).children(recursive=True)
+                            except ImportError:
+                                pass
+                            except psutil.Error:
+                                pass
+                        for process in reversed(descendants):
+                            try:
+                                process.terminate()
+                            except psutil.Error:
+                                pass
                         child.terminate()
                         try:
                             child.wait(timeout=5)
                         except subprocess.TimeoutExpired:
                             child.kill()
                             child.wait(timeout=5)
+                        if descendants:
+                            _, alive = psutil.wait_procs(descendants, timeout=5)
+                            for process in alive:
+                                try:
+                                    process.kill()
+                                except psutil.Error:
+                                    pass
+                            psutil.wait_procs(alive, timeout=5)
                     drain(final=True)
 
 
@@ -273,6 +333,8 @@ def save_report(report, home=HOME):
 
 
 def print_report(report):
+    if report.get('check_mode') == 'download-startup':
+        print('下载启动检查：全部程序校验、下载依赖及台账只读探测；完整数据库和解析/桌面诊断请运行默认preflight。', flush=True)
     print('FusionLive 发布版本：' + report['release'], flush=True)
     print('程序 SHA-256 / 语法检查：' + str(report['files_checked']) + ' 个文件；' + ('通过' if report['ok'] else '未通过'), flush=True)
     if 'python' in report:
@@ -290,8 +352,11 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description='离线校验程序完整度、发布版本、SHA-256、运行环境和数据库')
     parser.add_argument('--gui', action='store_true', help='同时要求台账 Tcl/Tk 组件可用')
     parser.add_argument('--wechat', action='store_true', help='同时要求微信发送端依赖可用，不启动微信或发送消息')
+    parser.add_argument('--startup', action='store_true', help='下载启动检查：校验全部程序，仅加载下载依赖并探测台账；完整诊断仍用默认入口')
     args = parser.parse_args(argv)
-    report = run_checks(gui=args.gui, wechat=args.wechat,
+    if args.startup and (args.gui or args.wechat):
+        parser.error('--startup不能与完整桌面检查组合')
+    report = run_checks(gui=args.gui, wechat=args.wechat, startup=args.startup,
                         progress=lambda message: print('检查阶段：'+message, flush=True))
     print_report(report)
     save_report(report)

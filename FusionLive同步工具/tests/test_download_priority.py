@@ -3,6 +3,7 @@ from pathlib import Path
 import unittest
 
 from sync import download, priority_download_keys, priority_unit_match
+import file_layout as layout
 from tests import test_download_replacement as replacement
 
 
@@ -24,6 +25,31 @@ class UnitMatchingTests(unittest.TestCase):
 
 
 class PriorityQueueTests(unittest.TestCase):
+    def test_history_only_copy_marks_update_while_missing_record_does_not(self):
+        self.scan([('ordinary','ordinary.pdf','OTHER')],old_revision='1')
+        path=self.case.base/'history/old.pdf'
+        path.parent.mkdir(parents=True)
+        self.case.old.rename(path)
+        with self.case.ledger.db:
+            self.case.ledger.db.execute("UPDATE file_history SET path='history/old.pdf' WHERE file_id='v1'")
+        updates=layout.local_update_keys(self.case.ledger)
+        self.assertIn(('p','v1'),updates)
+        self.assertNotIn(('p','ordinary'),updates)
+        path.unlink()
+        self.assertNotIn(('p','v1'),layout.local_update_keys(self.case.ledger))
+
+    def test_unrelated_package_history_does_not_make_new_member_an_update(self):
+        self.scan([('ordinary','ordinary.pdf','OTHER')],old_revision='1')
+        ledger=self.case.ledger
+        old=dict(ledger.one("SELECT * FROM files WHERE id='v1'"))
+        old.update(id='obsolete-member',filename='unrelated.pdf',document_id='v1',active=0,status='done',
+                   path='history/unrelated.pdf',bytes=3,sha256=hashlib.sha256(b'old').hexdigest())
+        path=self.case.base/old['path'];path.parent.mkdir(parents=True);path.write_bytes(b'old')
+        with ledger.db:
+            ledger.db.execute('INSERT INTO files ('+','.join(old)+') VALUES ('+','.join('?' for _ in old)+')',tuple(old.values()))
+            ledger.db.execute("UPDATE files SET document_id='v1' WHERE id='ordinary'")
+        self.assertNotIn(('p','ordinary'),layout.local_update_keys(ledger))
+
     def setUp(self):
         self.case=replacement.ReplacementTests()
         self.case.setUp()

@@ -12,6 +12,49 @@ from manager import BEIJING, Manager, TOOLS
 
 
 class LogCleanupTests(unittest.TestCase):
+    def test_ima_cleanup_is_scoped_and_running_logs_remain_protected(self):
+        old=self.file('logs/yesterday/ima/old-ima.log')
+        current=self.file('logs/today/ima/current-ima.log',old=False)
+        other=self.file('logs/yesterday/nas/keep-nas.log')
+        state=self.file('Ima知识库管理/runtime/settings.json')
+        history=self.manager.clear_logs('ima','history')
+        self.assertEqual(history['deleted'],1)
+        self.assertFalse(old.exists());self.assertTrue(current.exists())
+        self.assertTrue(other.exists());self.assertTrue(state.exists())
+        with patch.object(self.manager,'live',side_effect=lambda tool:'running' if tool=='ima' else 'stopped'):
+            active=self.manager.clear_logs('ima','all')
+        self.assertEqual(active['deleted'],0)
+        self.assertEqual(active['skipped'],1)
+        self.assertTrue(current.exists())
+        final=self.manager.clear_logs('ima','all')
+        self.assertEqual(final['deleted'],1)
+        self.assertTrue(other.exists());self.assertTrue(state.exists())
+
+    def test_unreadable_log_subdirectory_does_not_hide_other_logs(self):
+        kept=self.file('logs/yesterday/sync/valid.log')
+        broken=self.root/'logs/yesterday/sync/unreadable'
+        broken.mkdir()
+        original=Path.iterdir
+        def iterdir(path):
+            if path==broken:raise PermissionError('fixture unreadable directory')
+            return original(path)
+        with patch.object(Path,'iterdir',iterdir):
+            self.assertIn(kept,{path for path, _, _ in self.manager.log_paths('sync')})
+            self.assertEqual(self.manager.logs('sync')['total'],1)
+
+    def test_shared_logs_and_legacy_logs_are_both_visible_and_scoped(self):
+        shared=self.file('logs/yesterday/sync/run.log')
+        legacy=self.file(f'{TOOLS["sync"]["folder"]}/logs/yesterday/run.log')
+        other=self.file('logs/yesterday/wechat/listener.log')
+        self.assertEqual({p for p, _, _ in self.manager.log_paths('sync')}, {shared,legacy})
+        result=self.manager.clear_logs('sync')
+        self.assertEqual(result['deleted'],2)
+        self.assertTrue(other.exists())
+
+    def test_copied_root_logs_are_visible_with_sync_filter(self):
+        path=self.file('scheduler.log')
+        self.assertIn(path, {p for p, _, _ in self.manager.log_paths('sync')})
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

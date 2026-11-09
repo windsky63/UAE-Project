@@ -1,6 +1,6 @@
 """Manual send verification using the latest local artifacts; no platform access."""
 
-from app_paths import HOME, CODE
+from paths import HOME, CODE
 from datetime import datetime
 import hashlib
 import json

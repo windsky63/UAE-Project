@@ -1,8 +1,9 @@
 """Daily text then PNG delivery with persistent per-recipient submission records."""
 
-from app_paths import HOME, CODE
+from paths import HOME, CODE
 from datetime import datetime, timedelta, timezone
 import hashlib
+import os
 import json
 from pathlib import Path
 import sqlite3
@@ -38,27 +39,52 @@ def validate_report(base, marker, day, deadline, require_images=True):
 
 
 def snapshot_push_text(base, state, deadline):
-    """Freeze today's existing download daily text, never a previous day's text."""
+    """Render live facts at send time, independent of pre-generated text files."""
     day = state['date']
-    folder = Path(base) / 'logs' / day
     daily = '【资料下载日报】\n' + day + '\n当日下载日报暂未就绪，不使用旧日报或虚构下载数量。'
     try:
-        marker = json.loads((folder / '推送状态.json').read_text(encoding='utf-8'))
-        path = folder / '微信推送文.txt'
-        generated = datetime.fromisoformat(marker['generated_at'])
-        if (marker['date'] != day or marker.get('text_file') != path.name or generated.tzinfo is None
-                or generated.astimezone(LOCAL).date().isoformat() != day or generated >= deadline or path.stat().st_size > 64000):
-            raise ValueError('当天日报标记无效')
-        content = path.read_bytes()
-        if hashlib.sha256(content).hexdigest() != marker.get('text_sha256'):
-            raise ValueError('下载日报校验失败')
-        text = content.decode('utf-8-sig').strip()
+        from file_inventory import read_daily_snapshot
+        marker=read_daily_snapshot(base,day,require_ready=True)
+        text=marker['text']
+        if marker['date']!=day:
+            raise ValueError('日报日期不一致')
         if not text or len(text) > 14000:
             raise ValueError('下载日报长度不适合单条消息')
         daily = text
-    except (OSError, ValueError, KeyError, TypeError):
+    except (OSError, ValueError, KeyError, TypeError, sqlite3.Error):
         pass
     return daily
+
+
+def freeze_send_text(base, day, at, *, strict=False):
+    """Called under the desktop lock; persist before any sender operation."""
+    path=Path(base)/'logs'/day/'管道简报/文字发送备份.json'
+    if path.exists():
+        try:
+            data=json.loads(path.read_text(encoding='utf-8'))
+            text=data['text']
+            if (data.get('date')!=day or data.get('format')!='live-send-v1' or not isinstance(text,str)
+                    or hashlib.sha256(text.encode('utf-8')).hexdigest()!=data.get('sha256')):
+                raise ValueError('invalid backup')
+        except (OSError,ValueError,KeyError,TypeError) as exc:
+            raise DeliveryNotSent('文字发送备份校验失败，未重新生成或发送') from exc
+        return text
+    if strict:
+        from file_inventory import read_daily_snapshot
+        try:
+            statistics=read_daily_snapshot(base,day,require_ready=True)
+            text=statistics['text']
+        except (OSError,ValueError,KeyError,sqlite3.Error) as exc:
+            raise DeliveryNotSent('实时日报尚未就绪，未推送') from exc
+    else:
+        text=snapshot_push_text(base,dict(date=day),at)
+    path.parent.mkdir(parents=True,exist_ok=True)
+    data=dict(date=day,generated_at=at.isoformat(),ready=True,text=text,
+              sha256=hashlib.sha256(text.encode('utf-8')).hexdigest(),format='live-send-v1')
+    temporary=path.with_suffix('.json.tmp')
+    temporary.write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf-8')
+    os.replace(temporary,path)
+    return text
 
 
 class DeliveryJournal:
@@ -115,20 +141,18 @@ def deliver(base, marker, settings, at, sender_factory=None, cancelled=None, *, 
     if not manual and not deadline <= at < deadline + timedelta(minutes=settings['send_window_minutes']):
         raise DeliveryNotSent('当前不在当天微信推送时间窗口内')
     day = at.date().isoformat()
-    state = validate_report(base, marker, day, at + timedelta(microseconds=1) if manual else deadline,
+    state = validate_report(base, marker, day, at + timedelta(microseconds=1) if manual or not publish_briefing else deadline,
                             require_images=publish_briefing)
     with worker_lock(base / 'runtime/wechat_delivery') as acquired:
         if not acquired:
             raise DeliveryNotSent('已有微信发送任务正在操作桌面')
+        text=freeze_send_text(base,day,at,strict=manual) if publish_text else None
         journal = DeliveryJournal(base / 'runtime/wechat_delivery/deliveries.sqlite3')
         sender = None
         result = {'submitted': 0, 'already_submitted': 0, 'failed': 0, 'uncertain': 0, 'errors': []}
         try:
             for recipient in settings['recipients']:
                 publish_text, publish_briefing = recipient_flags(settings, recipient)
-                # Legacy frozen snapshots may contain the removed analysis appendix.
-                text = (state.get('wechat_push_text') if state.get('wechat_text_format') == 'daily-only-v1'
-                        else None) or snapshot_push_text(base, state, deadline)
                 items = [(0, {'text': text, 'sha256': hashlib.sha256(text.encode('utf-8')).hexdigest()})] if publish_text else []
                 if publish_briefing:
                     items.extend(enumerate(state['images'], 1))

@@ -1,5 +1,5 @@
 """One offline, recoverable plan for current paths, historical folders and rollback."""
-from app_paths import HOME
+from paths import HOME
 from collections import defaultdict
 from contextlib import ExitStack, closing
 from pathlib import Path
@@ -45,7 +45,7 @@ def restorations(ledger, mapping):
     for row in [*histories, *files]:
         if row['path']:
             by_path[row['path']].append(row)
-    links = layout.replacement_links(ledger, files, mapping)
+    links = layout.replacement_links(ledger, files, mapping, conservative=False)
     all_refs = references(ledger)
     predecessors = defaultdict(list)
     for old in files:
@@ -99,24 +99,46 @@ def restorations(ledger, mapping):
     return moves, warnings
 
 
-def plan(ledger, progress=None):
+def plan(ledger, progress=None, *, restore_only=False):
     recovery = pending_jobs(ledger)
     if recovery:
         return dict(format=1, policy='unified-path-maintenance-v1', recovery=recovery,
                     moves=[], missing=[], mapping=[], warnings=['须先恢复上次迁移，再生成完整整理方案。'])
-    regular = layout.plan(ledger, progress=progress)
+    complete = bool(ledger.one("SELECT 1 FROM refresh_cycles WHERE status='complete'")
+                    and not ledger.one("SELECT 1 FROM refresh_cycles WHERE status!='complete'"))
+    if ledger.one("SELECT 1 FROM refresh_cycles WHERE status!='complete'"):
+        raise layout.LayoutError('完整盘点尚未完成，请先续接盘点，再整理有效下载目录。')
+    if restore_only:
+        mapping = layout.targets(ledger, progress=progress)
+        moves, warnings = restorations(ledger, mapping)
+        for index, move in enumerate(moves, 1):
+            if progress:
+                progress.update(done=index-1, total=len(moves), current=move['source'])
+            if layout.checksum(layout.confined(ledger.base_dir, move['source'])) != move['sha256']:
+                raise layout.LayoutError('待恢复旧副本SHA256校验失败，保留原件：'+move['source'])
+            target = layout.confined(ledger.base_dir, move['target'])
+            if target.exists():
+                raise layout.LayoutError('恢复目标已有文件，保留原件：'+move['target'])
+        return dict(format=1, policy='restore-same-member-v2', recovery=[], moves=moves, missing=[],
+                    mapping=[dict(project=k[0],file_id=k[1],**v) for k,v in mapping.items()],
+                    warnings=warnings, restored=len(moves), history_files=0)
+    regular = layout.plan(ledger, progress=progress, reconcile=complete)
     mapping = {(r['project'], r['file_id']): r for r in regular['mapping']}
-    restore, warnings = restorations(ledger, mapping)
+    restore, warnings = ([], []) if complete else restorations(ledger, mapping)
     # Plan historical destinations against projected archives, without copying data
     # or changing the live ledger during preview.
-    archives = {r['target']: r['source'] for r in regular['moves'] if r['target'].startswith('history/')}
+    archives = {r['target']: r['source'] for r in regular['moves'] if r['target'].startswith('history/')
+                and history.BATCH.match(Path(r['target']).parts[1])}
+    reserved = [r['target'] for r in regular['moves'] if r['target'].startswith('history/')
+                and r['target'] not in archives]
     excluded = [r['source'] for r in [*regular['moves'], *restore] if r['source'].startswith('history/')]
-    shared = history.plan(ledger, progress, extra_sources=archives, exclude=excluded)
+    shared = history.plan(ledger, progress, extra_sources=archives, exclude=excluded, reserve_paths=reserved)
     merged = {r['source']: r for r in shared['moves']}
     refs = references(ledger)
     moves = []
     for move in regular['moves']:
-        move = dict(move, reason='整理当前文件路径')
+        move = dict(move, reason='整理历史目录' if move.get('platform_path') and move['target'].startswith('history/')
+                    else '整理当前文件路径')
         if move['target'] in merged:
             final = merged.pop(move['target'])
             move.update(target=final['target'], platform_path=final['platform_path'], reason='整理历史目录')
@@ -138,12 +160,16 @@ def plan(ledger, progress=None):
         if layout.length(ledger.base_dir/move['target']) > layout.LIMIT:
             raise layout.LayoutError('整理目标路径过长：'+move['target'])
     return dict(regular, policy='unified-path-maintenance-v1', moves=moves,
-                warnings=warnings, recovery=[], restored=len(restore),
+                warnings=warnings, recovery=[], restored=len(restore)+sum(
+                    m['source'].startswith('history/') and m['target'].startswith('downloads/')
+                    for m in regular['moves']),
                 history_files=sum(m['reason'] == '整理历史目录' for m in moves))
 
 
-def apply(ledger, progress=None, cancelled=lambda: False):
+def apply(ledger, progress=None, cancelled=lambda: False, *, restore_only=False):
     base = ledger.base_dir
+    if restore_only and pending_jobs(ledger):
+        raise layout.LayoutError('存在未完成的迁移，请先通过普通目录整理入口恢复，再执行只恢复旧副本。')
     if (not (base/'downloads').is_dir() and not (base/'history').is_dir() and
             not (base/'runtime/path_migration').is_dir() and
             ledger.one('SELECT 1 FROM files WHERE path IS NOT NULL LIMIT 1')):
@@ -158,7 +184,7 @@ def apply(ledger, progress=None, cancelled=lambda: False):
                      log=progress.message if progress else print)
     if any(r['engine'] == 'history_repairs' for r in recovery):
         history.apply(ledger, progress=progress, cancelled=cancelled)
-    proposal = plan(ledger, progress)
+    proposal = plan(ledger, progress, restore_only=restore_only)
     if proposal['recovery']:
         raise layout.LayoutError('上次迁移未能恢复完成，保留现场。')
     report = base/'runtime/path_maintenance_applied.json'
@@ -178,8 +204,12 @@ def apply(ledger, progress=None, cancelled=lambda: False):
 def main(argv=None):
     parser = argparse.ArgumentParser(description='统一整理下载/历史目录，恢复新版未下载的旧文件。默认只预览。')
     parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--restore-only', action='store_true', help='只恢复身份明确且SHA256正确的旧副本，不整理其他历史文件')
+    parser.add_argument('--refresh-report', action='store_true', help='执行完成后离线核对实时统计，不生成固定推送文、不发送微信')
     parser.add_argument('--base-dir', type=Path, default=HOME)
     args = parser.parse_args(argv)
+    if args.refresh_report and not args.apply:
+        parser.error('--refresh-report 需同时使用 --apply')
     base = args.base_dir.resolve()
     database = base/'runtime/ledger.sqlite3'
     if not database.is_file():
@@ -198,9 +228,13 @@ def main(argv=None):
         db.row_factory = sqlite3.Row
         ledger = layout.ReadLedger(db, base)
         if args.apply:
-            result = apply(ledger, progress)
+            result = apply(ledger, progress, restore_only=args.restore_only)
+            if args.refresh_report:
+                from reporting import build_push_text
+                build_push_text(ledger)
+                progress.message('已核对实时统计；未生成固定推送文，未执行微信发送。')
         else:
-            result = plan(ledger, progress)
+            result = plan(ledger, progress, restore_only=args.restore_only)
             output = base/'runtime/path_maintenance_preview.json'
             output.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
             progress.message('预览已保存：'+str(output))

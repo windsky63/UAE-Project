@@ -7,7 +7,7 @@ import tempfile
 import unittest
 import venv
 
-from app_paths import HOME
+from paths import HOME
 
 
 @unittest.skipUnless(os.name == 'nt','Windows CMD integration')
@@ -20,7 +20,7 @@ class MaintenanceLauncherTests(unittest.TestCase):
         (self.tool/'app').mkdir(parents=True)
         self.cmd=self.tool/'整理文件目录.cmd'
         shutil.copyfile(HOME/self.cmd.name,self.cmd)
-        for name in ('path_maintenance_launcher.py','app_paths.py','runtime_logging.py'):
+        for name in ('path_maintenance_launcher.py','paths.py','runtime_logging.py'):
             shutil.copyfile(HOME/'app'/name,self.tool/'app'/name)
         (self.tool/'main.py').write_text(
             'import json,os,sys\nfrom pathlib import Path\n'

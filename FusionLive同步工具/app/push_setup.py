@@ -1,6 +1,6 @@
 """Small desktop target selector shown by the normal scheduler launcher."""
 
-from app_paths import HOME, CODE
+from paths import HOME, CODE
 import sys
 import queue
 import threading
@@ -158,7 +158,7 @@ def main():
                 'recipient_publications': {name: {'publish_text': text.get(), 'publish_briefing': briefing.get()}
                                            for name, (_, text, briefing) in choices.items()},
                 'recipients': targets, 'known_chats': list(choices), 'briefing_title': title, 'test_recipient': test_recipient.get().strip(),
-                'prepare_time_beijing': DEFAULT['prepare_time_beijing'], 'send_time_beijing': DEFAULT['send_time_beijing']}
+                'prepare_time_beijing': settings['prepare_time_beijing'], 'send_time_beijing': settings['send_time_beijing']}
         try:
             save_settings(data)
         except (OSError, ValueError) as exc:

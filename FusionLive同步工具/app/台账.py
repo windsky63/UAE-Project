@@ -1,6 +1,6 @@
 """Native desktop ledger. Viewing, searching and exporting work offline."""
 
-from app_paths import HOME, CODE
+from paths import HOME, CODE
 import os
 import json
 from datetime import date

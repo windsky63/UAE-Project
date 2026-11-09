@@ -16,6 +16,55 @@ from tests.test_inventory import doc, content
 
 
 class ReplacementTests(unittest.TestCase):
+    def test_startup_checks_presence_once_and_repair_reuses_same_scan(self):
+        import reporting
+        with patch('reporting.local_presence', wraps=reporting.local_presence) as presence, \
+             patch('reporting.download_directory_stats', wraps=reporting.download_directory_stats) as directory:
+            workflow = Workflow(self.ledger, self.client)
+            self.assertEqual(presence.call_count, 0)
+            self.assertEqual(directory.call_count, 0)
+            with patch('workflow.resolve_path', side_effect=AssertionError('repeated file probe')):
+                self.assertEqual(workflow.repair_missing_downloads(), 0)
+            self.assertEqual(presence.call_count, 1)
+            self.assertEqual(directory.call_count, 0)
+            self.old.unlink()
+            self.assertEqual(workflow.repair_missing_downloads(), 1)
+            self.assertEqual(self.ledger.one('SELECT status FROM files')[0], 'pending')
+
+    def test_busy_publication_returns_with_verified_bytes_and_stays_unfinished(self):
+        from analysis_worker import worker_lock
+        self.updated()
+        guard = None
+        original = self.receive
+        def receive(item, target, **kwargs):
+            nonlocal guard
+            result = original(item, target, **kwargs)
+            guard = worker_lock(self.base/'runtime/file_analysis')
+            self.assertTrue(guard.__enter__())
+            return result
+        self.client.download.side_effect = receive
+        # A bounded stop probe catches an accidental busy loop without weakening business timeouts.
+        calls = 0
+        def check():
+            nonlocal calls
+            calls += 1
+            if calls > 30:
+                raise AssertionError('publication waited instead of deferring')
+        try:
+            with patch('sync.check_window', side_effect=check):
+                self.assertEqual(download(self.client, self.ledger), 1)
+            self.assertEqual(self.old.read_bytes(), b'old')
+            self.assertTrue(self.ledger.one('SELECT path FROM files')[0].startswith('runtime/download_ready/'))
+            workflow = Workflow(self.ledger, self.client)
+            self.assertFalse(workflow.finish_download())
+            self.assertEqual(workflow.state['phase'], 'download')
+        finally:
+            if guard:
+                guard.__exit__(None, None, None)
+        with patch.object(self.client, 'download', side_effect=AssertionError('redownload')):
+            download(self.client, self.ledger)
+        self.assertEqual(self.old.read_bytes(), b'new')
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -155,5 +204,84 @@ class ReplacementTests(unittest.TestCase):
             return self.receive(item, target, progress)
         self.client.download.side_effect = receive
         download(self.client, self.ledger)
+        self.assertEqual(self.client.download.call_count, 1)
+        self.assertEqual(self.old.read_bytes(), b'old')
+        download(self.client, self.ledger)
         self.assertEqual(self.client.download.call_count, 2)
+        self.assertEqual(self.old.read_bytes(), b'new')
+
+    def test_busy_parser_defers_update_and_downloads_next_file_first(self):
+        from analysis_worker import worker_lock
+        self.scan([doc(revision='1'), doc('later', firstVersionId='later-first', fileName='later.pdf')],
+                  [content(revision='1'), content('later', filename='later.pdf')])
+        guard = None
+
+        def receive(item, target, **kwargs):
+            nonlocal guard
+            if item['id'] == 'later':
+                self.assertEqual(self.old.read_bytes(), b'old')
+                saved = self.ledger.one("SELECT * FROM files WHERE id='v1'")
+                self.assertEqual(saved['status'], 'done')
+                self.assertTrue(saved['path'].startswith('runtime/download_ready/'))
+                self.assertEqual((self.base/saved['path']).read_bytes(), b'new')
+                self.assertFalse((self.base/'runtime/layout.pending').exists())
+                self.assertTrue((self.base/'runtime/file_analysis/stop.request').exists())
+                guard.__exit__(None, None, None)
+                guard = None
+            result = self.receive(item, target, **kwargs)
+            if item['id'] == 'v1':
+                guard = worker_lock(self.base/'runtime/file_analysis')
+                self.assertTrue(guard.__enter__())
+            return result
+
+        self.client.download.side_effect = receive
+        try:
+            with patch('sync.priority_download_keys', return_value=[('p', 'v1')]):
+                download(self.client, self.ledger)
+        finally:
+            if guard is not None:
+                guard.__exit__(None, None, None)
+        self.assertEqual(self.calls, ['v1', 'later'])
+        self.assertEqual(self.old.read_bytes(), b'new')
+        self.assertFalse((self.base/'runtime/file_analysis/stop.request').exists())
+        self.assertFalse((self.base/'runtime/layout.analysis_pause.json').exists())
+
+    def test_deferred_update_survives_stop_and_reopen_without_redownload(self):
+        from analysis_worker import worker_lock
+        self.scan([doc(revision='1'), doc('later', firstVersionId='later-first', fileName='later.pdf')],
+                  [content(revision='1'), content('later', filename='later.pdf')])
+        guard = None
+
+        def receive(item, target, **kwargs):
+            nonlocal guard
+            if item['id'] == 'later':
+                raise WindowClosed('fixture safe stop')
+            result = self.receive(item, target, **kwargs)
+            guard = worker_lock(self.base/'runtime/file_analysis')
+            self.assertTrue(guard.__enter__())
+            return result
+
+        self.client.download.side_effect = receive
+        try:
+            with patch('sync.priority_download_keys', return_value=[('p', 'v1')]):
+                with self.assertRaises(WindowClosed):
+                    download(self.client, self.ledger)
+            self.assertEqual(self.old.read_bytes(), b'old')
+            saved = self.ledger.one("SELECT * FROM files WHERE id='v1'")
+            self.assertEqual((self.base/saved['path']).read_bytes(), b'new')
+        finally:
+            if guard is not None:
+                guard.__exit__(None, None, None)
+        self.ledger.close()
+        self.ledger = Ledger(self.base/'runtime/ledger.sqlite3', base_dir=self.base)
+        self.addCleanup(self.ledger.close)
+        def receive_after_restart(item, target, **kwargs):
+            Path(target).write_bytes(b'new')
+            return dict(bytes=3, sha256=hashlib.sha256(b'new').hexdigest(), path=str(target))
+
+        self.client.download.side_effect = receive_after_restart
+        self.client.download.reset_mock()
+        download(self.client, self.ledger)
+        self.assertEqual(self.client.download.call_count, 1)
+        self.assertEqual(self.client.download.call_args.args[0]['id'], 'later')
         self.assertEqual(self.old.read_bytes(), b'new')

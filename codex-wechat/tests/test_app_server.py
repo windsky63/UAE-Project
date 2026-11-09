@@ -7,9 +7,10 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from wechat_local.app_server import ResidentBackend, public_notification
+from wechat_local.app_server import ResidentBackend, public_notification, CodexBackendError
 from wechat_local.codex_runner import CodexRunner
 from wechat_local.codex_settings import CodexGenerationTimeoutError, CodexIdleTimeoutError
+from wechat_local.codex_settings import CodexConnectionTimeoutError, CodexServiceError
 from wechat_local.config import LocalConfig, WechatChat
 
 
@@ -122,6 +123,51 @@ def test_resident_timeouts_stop_backend_without_replaying_task(backend, mode, ex
         run(backend, mode)
     assert backend[0].client is None
     assert sum(r.get('method') == 'turn/start' for r in log(backend)) == 1
+
+
+def test_explicit_network_retries_are_bounded_and_next_task_can_reconnect(backend):
+    backend[1].codex_connect_timeout_seconds = .15
+    with pytest.raises(CodexConnectionTimeoutError):
+        run(backend, 'network-down')
+    assert backend[0].client is None
+    assert sum(r.get('method') == 'turn/start' for r in log(backend)) == 1
+    assert run(backend, 'recovered').text.endswith('recovered')
+
+
+@pytest.mark.parametrize('mode', ['account-quota', 'account-login'])
+def test_account_rejection_stops_without_waiting_for_network_deadline(backend, mode):
+    with pytest.raises(CodexServiceError) as error:
+        run(backend, mode)
+    assert error.value.reason == 'account'
+    assert 'PRIVATE' not in str(error.value)
+    assert sum(r.get('method') == 'turn/start' for r in log(backend)) == 1
+
+
+@pytest.mark.parametrize('mode', ['slow-initial', 'transient-network-slow'])
+def test_slow_thinking_does_not_trigger_network_failure(backend, mode):
+    backend[1].codex_connect_timeout_seconds = .1
+    assert backend[1].codex_timeout_seconds == backend[1].codex_idle_timeout_seconds == 0
+    assert run(backend, mode).text.endswith(mode)
+
+
+def test_operator_can_stop_a_task_without_a_generation_deadline(backend):
+    service = backend[0]
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(run, backend, 'idle')
+        deadline = time.monotonic() + 5
+        while not any(row.get('method') == 'turn/start' for row in log(backend)):
+            assert time.monotonic() < deadline
+            time.sleep(.02)
+        service.request_stop()
+        with pytest.raises(CodexBackendError, match='主动停止'):
+            future.result(timeout=5)
+
+
+def test_service_error_notification_retains_only_fixed_classification():
+    event = public_notification(dict(method='error', params=dict(threadId='t', willRetry=True,
+        error=dict(codexErrorInfo={'httpConnectionFailed': {'httpStatusCode': 401}}, message='PRIVATE_SECRET'))))
+    assert event['params']['serviceFailure'] == 'account'
+    assert 'PRIVATE_SECRET' not in json.dumps(event)
 
 
 def test_cleanup_failure_keeps_completed_answer_and_recycles_process(backend):

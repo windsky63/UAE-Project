@@ -12,6 +12,39 @@ from preflight import run_checks, RELEASE_ID, REQUIRED_FILES, MANIFEST
 
 
 class PreflightTests(unittest.TestCase):
+    def test_download_startup_probes_database_without_loading_analysis_dependencies(self):
+        folder=self.base/'runtime';folder.mkdir()
+        with closing(sqlite3.connect(folder/'ledger.sqlite3')) as db, db:
+            db.execute('CREATE TABLE files(id TEXT)')
+        import importlib
+        original=importlib.import_module
+        modules=[]
+        def load(name):
+            modules.append(name)
+            if name!='requests':raise AssertionError('startup imported optional dependency '+name)
+            return original(name)
+        with patch('preflight.importlib.import_module',side_effect=load):
+            report=run_checks(self.base,startup=True)
+        self.assertTrue(report['ok'],report['errors'])
+        self.assertEqual(modules,['requests'])
+        self.assertIn('未执行全库完整性扫描',report['database'])
+        self.assertEqual(report['files_checked'],len(REQUIRED_FILES))
+
+    def test_download_startup_rejects_unreadable_database(self):
+        folder=self.base/'runtime';folder.mkdir()
+        (folder/'ledger.sqlite3').write_bytes(b'not a database')
+        report=run_checks(self.base,startup=True)
+        self.assertFalse(report['ok'])
+        self.assertTrue(any('数据库只读检查失败' in error for error in report['errors']))
+
+    def test_default_diagnostic_still_runs_full_database_check(self):
+        folder=self.base/'runtime';folder.mkdir()
+        with closing(sqlite3.connect(folder/'ledger.sqlite3')) as db, db:
+            db.execute('CREATE TABLE files(id TEXT)')
+        report=run_checks(self.base)
+        self.assertEqual(report['database'],'quick_check: ok（只读检查）')
+        self.assertEqual(report['check_mode'],'full')
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.base = Path(self.temp.name)
@@ -66,6 +99,49 @@ class PreflightTests(unittest.TestCase):
         del self.files['app/sync.py']
         self.save_manifest()
         self.assertFalse(self.check()['ok'])
+
+    def preserve_server_credentials(self):
+        del self.files['app/local_credentials.py']
+        self.manifest['preserved_local_files'] = ['app/local_credentials.py']
+        self.save_manifest()
+
+    def test_overlay_accepts_independent_server_credentials_without_executing_them(self):
+        self.preserve_server_credentials()
+        path = self.base / 'app/local_credentials.py'
+        data = b'raise RuntimeError("credentials must never be imported by preflight")\n'
+        path.write_bytes(data)
+        report = self.check(startup=True)
+        self.assertTrue(report['ok'], report['errors'])
+        self.assertEqual(report['files_checked'], len(REQUIRED_FILES))
+        self.assertEqual(path.read_bytes(), data)
+
+    def test_undeclared_missing_credentials_manifest_entry_still_fails(self):
+        del self.files['app/local_credentials.py']
+        self.save_manifest()
+        self.assertIn('校验清单缺少必要项目：app/local_credentials.py', self.check()['errors'])
+
+    def test_overlay_missing_or_invalid_server_credentials_fails(self):
+        self.preserve_server_credentials()
+        path = self.base / 'app/local_credentials.py'
+        path.unlink()
+        self.assertTrue(any('服务器凭据缺失' in e for e in self.check()['errors']))
+        path.write_bytes(b'def broken(\n')
+        self.assertTrue(any('服务器凭据 Python 语法' in e for e in self.check()['errors']))
+
+    def test_overlay_cannot_exempt_program_modules_or_conflict_with_hashes(self):
+        self.manifest['preserved_local_files'] = ['app/local_credentials.py']
+        self.save_manifest()
+        self.assertFalse(self.check()['ok'])
+        self.preserve_server_credentials()
+        del self.files['app/sync.py']
+        self.manifest['preserved_local_files'].append('app/sync.py')
+        self.save_manifest()
+        self.assertFalse(self.check()['ok'])
+
+    def test_overlay_still_checks_program_hashes(self):
+        self.preserve_server_credentials()
+        (self.base / 'app/sync.py').write_bytes(b'changed = True\n')
+        self.assertTrue(any('SHA-256' in e and 'app/sync.py' in e for e in self.check()['errors']))
 
     def test_archived_launcher_is_still_verified(self):
         path = next(n for n in REQUIRED_FILES if n.startswith('maintenance/'))

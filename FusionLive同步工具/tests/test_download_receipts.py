@@ -12,6 +12,42 @@ from tests import test_download_replacement as replacement
 
 
 class DownloadReceiptTests(unittest.TestCase):
+    def test_matching_historical_identity_is_reverified_and_reused_without_http(self):
+        case=self.case
+        case.updated()
+        case.scan([replacement.doc()],[replacement.content()])
+        with patch.object(case.client,'download',side_effect=AssertionError('same version must not be transferred')):
+            self.assertEqual(download(case.client,case.ledger),0)
+        row=case.ledger.one("SELECT * FROM files WHERE id='v1'")
+        self.assertEqual(row['status'],'done')
+        self.assertEqual((case.base/row['path']).read_bytes(),b'old')
+        self.assertEqual(row['download_date_source'],'已验证历史版本复用')
+
+    def test_corrupt_historical_identity_is_never_reused(self):
+        case=self.case
+        case.updated()
+        case.scan([replacement.doc()],[replacement.content()])
+        case.old.write_bytes(b'bad')
+        self.assertEqual(case.ledger.reuse_verified_versions(),0)
+        self.assertEqual(case.ledger.one("SELECT status FROM files WHERE id='v1'")[0],'pending')
+        self.assertEqual(case.old.read_bytes(),b'bad')
+
+    def test_exact_version_restored_from_history_is_reused_without_http(self):
+        case = self.case
+        case.updated()
+        case.scan([replacement.doc()], [replacement.content()])
+        historical = case.base/'history/previous.pdf'
+        historical.parent.mkdir(parents=True, exist_ok=True)
+        case.old.rename(historical)
+        with case.ledger.db:
+            case.ledger.db.execute("UPDATE file_history SET path='history/previous.pdf'")
+        with patch.object(case.client, 'download', side_effect=AssertionError('verified version must be reused')):
+            self.assertEqual(download(case.client, case.ledger), 0)
+        row = case.ledger.one("SELECT * FROM files WHERE id='v1'")
+        self.assertEqual(row['status'], 'done')
+        self.assertTrue(row['path'].startswith('downloads/'))
+        self.assertEqual((case.base/row['path']).read_bytes(), b'old')
+
     def setUp(self):
         self.case = replacement.ReplacementTests()
         self.case.setUp()
@@ -98,6 +134,10 @@ class DownloadReceiptTests(unittest.TestCase):
         download(self.client, self.case.ledger)
         self.assertEqual(self.row()['status'], 'done')
         self.assertEqual(self.case.ledger.one('SELECT count(*) FROM download_receipts')[0], 0)
+        activity=self.case.ledger.one("SELECT * FROM download_activity WHERE file_id='new' AND completed IS NOT NULL")
+        self.assertEqual(activity['action'],'new')
+        self.assertEqual(activity['had_download_copy'],0)
+        self.assertEqual(activity['sha256'],self.row()['sha256'])
 
     def test_receipt_write_failure_never_publishes_untracked_file(self):
         with patch.object(self.case.ledger, 'save_download_receipt', side_effect=OSError('fixture database unavailable')):
@@ -106,14 +146,15 @@ class DownloadReceiptTests(unittest.TestCase):
         self.assertNotEqual(self.row()['status'], 'done')
         self.assertEqual(list((self.case.base/'runtime/download_parts').glob('*.part')), [])
 
-    def test_unknown_existing_file_without_receipt_is_never_adopted(self):
+    def test_unknown_file_without_receipt_is_archived_and_never_adopted(self):
         self.target.parent.mkdir(parents=True, exist_ok=True)
-        self.target.write_bytes(b'new')
-        with patch.object(self.client, 'download', side_effect=AssertionError('must not overwrite')):
+        self.target.write_bytes(b'old')
+        with patch.object(self.client, 'download', wraps=self.client.download) as transfer:
             download(self.client, self.case.ledger)
-        self.assertEqual(self.row()['status'], 'failed')
-        self.assertEqual(self.row()['retryable'], 0)
+        self.assertEqual(transfer.call_count,1)
+        self.assertEqual(self.row()['status'], 'done')
         self.assertEqual(self.target.read_bytes(), b'new')
+        self.assertEqual([p.read_bytes() for p in (self.case.base/'history').rglob('*') if p.is_file()],[b'old'])
 
     def test_verified_update_recovers_staging_then_archives_previous_version(self):
         self.case.updated()
@@ -133,3 +174,8 @@ class DownloadReceiptTests(unittest.TestCase):
         self.assertEqual(self.case.old.read_bytes(), b'new')
         history = self.case.ledger.one('SELECT path FROM file_history')[0]
         self.assertEqual((self.case.base/history).read_bytes(), b'old')
+        activities=self.case.ledger.all("SELECT * FROM download_activity WHERE file_id='v1' AND completed IS NOT NULL")
+        self.assertEqual(len(activities),1)
+        self.assertEqual(activities[0]['action'],'updated')
+        self.assertEqual(activities[0]['had_download_copy'],1)
+        self.assertTrue(activities[0]['previous_sha256'])

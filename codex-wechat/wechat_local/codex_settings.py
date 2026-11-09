@@ -19,6 +19,56 @@ class CodexIdleTimeoutError(TimeoutError):
     """No generation progress was received within the idle limit."""
 
 
+class CodexConnectionTimeoutError(TimeoutError):
+    """Explicit network failures kept retrying beyond the connection limit."""
+
+
+class CodexServiceError(RuntimeError):
+    def __init__(self, reason):
+        self.reason = reason
+        super().__init__('Codex 账号认证或额度异常' if reason == 'account' else 'Codex 网络连接失败')
+
+
+def service_failure(value):
+    """Classify service diagnostics into fixed labels; never forward raw text."""
+    text = json.dumps(value, ensure_ascii=False, default=str).casefold()[:16384]
+    compact = text.replace('_', '').replace('-', '').replace(' ', '')
+    if any(f'"{field}":{status}' in compact or f'"{field}":"{status}"' in compact
+           for field in ('httpstatuscode', 'statuscode', 'status') for status in (401, 402, 403)):
+        return 'account'
+    if any(term in compact for term in (
+            'usagelimitexceeded', 'insufficientquota', 'invalidapikey', 'unauthorized',
+            'notauthenticated', 'notloggedin', 'notsignedin', 'authenticationrequired', 'loginrequired',
+            'quotaexceeded', 'usagelimit', 'accountdeactivated', 'tokenexpired')):
+        return 'account'
+    if any(term in text for term in ('额度已用尽', '达到使用限额', '未登录', '请先登录')):
+        return 'account'
+    if any(term in compact for term in (
+            'httpconnectionfailed', 'responsestreamconnectionfailed', 'responsestreamdisconnected',
+            'failedtoconnect', 'connectionrefused', 'connectiontimedout', 'networkisunreachable',
+            'nameresolution', 'tlshandshake', 'error sending request'.replace(' ', ''),
+            'streamdisconnectedbeforecompletion', 'reconnecting')):
+        return 'network'
+    return None
+
+
+class CodexConnectionWatch:
+    def __init__(self, seconds):
+        # Silence can be normal model thinking. Arm only after a network error.
+        self.seconds, self.waiting_since = seconds, None
+
+    def progress(self):
+        self.waiting_since = None
+
+    def retry(self, now):
+        if self.waiting_since is None:
+            self.waiting_since = now
+        elif now - self.waiting_since >= self.seconds:
+            # Evaluate only on another explicit network failure. A temporary
+            # error followed by silent, slow model thinking is not a timeout.
+            raise CodexConnectionTimeoutError('Codex network connection kept failing beyond the retry limit')
+
+
 def access_directories(base, configured=None):
     base = Path(base).resolve()
     if configured is None:

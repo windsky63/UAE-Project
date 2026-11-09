@@ -38,30 +38,33 @@ def report_members(report, result_path):
                    analysis_state=parsed.get('state', '已解压，内容未解析'))
 
 
-def current_members(base):
-    """Only active, committed caches matching a current downloaded parent version."""
+def current_members(base, *, ledger_path=None, include_inactive=False, downloads=None):
+    """Committed caches matching downloaded parents; opt in to local old versions."""
     base = Path(base).resolve()
+    downloads = Path(downloads).resolve() if downloads is not None else base / 'downloads'
     cache = base / 'runtime/file_analysis'
     queue_path = cache / 'queue.sqlite3'
-    ledger = base / 'runtime/ledger.sqlite3'
+    ledger = Path(ledger_path) if ledger_path is not None else base / 'runtime/ledger.sqlite3'
     if not ledger.is_file() or not queue_path.is_file():
         return []
     with closing(readonly(ledger)) as db:
         parents = {(str(r['project']), str(r['id'])): dict(r) for r in db.execute(
-            "SELECT project,id,filename,path,bytes,sha256 FROM files WHERE active=1 AND status='done'")}
+            "SELECT project,id,filename,path,bytes,sha256 FROM files WHERE status='done'"
+            + ("" if include_inactive else " AND active=1"))}
     results, seen = [], set()
     with closing(readonly(queue_path)) as queue:
         tables = {r[0] for r in queue.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         if 'jobs' not in tables:
             return []
-        for raw in queue.execute("SELECT * FROM jobs WHERE active=1 AND state IN ('done','failed') AND result_path IS NOT NULL ORDER BY updated DESC"):
+        for raw in queue.execute("SELECT * FROM jobs WHERE state IN ('done','failed') AND result_path IS NOT NULL"
+                                 + ("" if include_inactive else " AND active=1") + " ORDER BY updated DESC"):
             job = dict(raw)
             key = str(job['project']), str(job['file_id'])
             parent = parents.get(key)
             if key in seen or not parent or not parent['sha256'] or parent['sha256'] != job['expected_sha']:
                 continue
             parent_path = (base / str(parent['path']).replace('\\', '/')).resolve()
-            if (not parent_path.is_relative_to(base / 'downloads') or not parent_path.is_file() or
+            if (not parent_path.is_relative_to(downloads) or parent_path.is_symlink() or not parent_path.is_file() or
                     parent_path.stat().st_size != parent['bytes']):
                 continue
             result_path = (cache / job['result_path']).resolve()

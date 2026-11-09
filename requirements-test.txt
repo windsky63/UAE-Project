@@ -1,0 +1,2 @@
+# Development regression checks; install runtime requirements separately first.
+pytest>=9.1,<10

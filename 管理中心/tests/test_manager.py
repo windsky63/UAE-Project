@@ -19,6 +19,177 @@ from server import handler
 
 
 class ManagerTests(unittest.TestCase):
+    @unittest.skipUnless(sys.platform=='win32','Windows interactive console launcher')
+    def test_nas_setup_uses_real_console_batch_entry_without_redirected_input(self):
+        nas=self.manager.folder('nas')
+        (nas/'setup_nas_ssh.py').touch()
+        (nas/'配置NAS本机校验.cmd').touch()
+        with patch('manager.locked',return_value=False),patch('manager.subprocess.Popen') as launch:
+            self.manager.nas_setup()
+        command=launch.call_args.args[0]
+        self.assertEqual(command,['cmd.exe','/d','/c','配置NAS本机校验.cmd'])
+        self.assertTrue(launch.call_args.kwargs['close_fds'])
+        self.assertNotIn('stdin',launch.call_args.kwargs)
+        self.assertNotIn('stdout',launch.call_args.kwargs)
+    def test_nas_ssh_defaults_and_read_status_do_not_connect(self):
+        self.manager.config_path('nas').unlink()
+        with patch('manager.subprocess.Popen',side_effect=AssertionError('read launched SSH')):
+            cfg=self.manager.config('nas')
+            self.assertTrue(cfg['data']['remote_hash']['enabled'])
+            self.assertEqual(cfg['data']['verification_method'],'ssh')
+            self.assertFalse(cfg['data']['remote_hash']['fallback_to_smb'])
+            self.assertEqual(self.manager.nas_hash_status()['state'],'unconfigured')
+
+    def test_nas_ssh_configuration_roundtrip_and_password_rejection(self):
+        current=self.manager.config('nas')
+        remote={**current['data']['remote_hash'],'enabled':True,'host':'nas',
+                'root_path':'/volume1/share','username':'windsky'}
+        with patch.object(self.manager,'_validate',return_value='') as validate:
+            saved=self.manager.save_config('nas',{**current['data'],'verification_method':'ssh','remote_hash':remote},current['revision'])
+        validate.assert_called_once()
+        self.assertEqual(saved['data']['remote_hash']['root_path'],'/volume1/share')
+        with self.assertRaisesRegex(ValueError,'密码'):
+            self.manager.save_config('nas',{**saved['data'],'remote_hash':{**remote,'password':'not-saved'}},saved['revision'])
+        self.assertNotIn('not-saved',self.manager.config_path('nas').read_text(encoding='utf-8'))
+
+    def test_nas_hash_check_records_configuration_revision(self):
+        cfg=self.manager.config('nas')
+        with patch.object(self.manager,'_validate',return_value=''):
+            self.manager.save_config('nas',{**cfg['data'],'verification_method':'ssh','remote_hash':{
+                **cfg['data']['remote_hash'],'enabled':True,'root_path':'/volume1/share'}},cfg['revision'])
+        with patch('manager.locked',return_value=False),patch.object(self.manager,'action',return_value={'id':'check1'}):
+            self.manager.nas_hash_check()
+        with patch.object(self.manager,'tasks',return_value=[{'id':'check1','state':'succeeded'}]):
+            self.assertEqual(self.manager.nas_hash_status()['state'],'ready')
+            cfg=self.manager.config('nas')
+            with patch.object(self.manager,'_validate',return_value=''):
+                self.manager.save_config('nas',{**cfg['data'],'retry_attempts':3},cfg['revision'])
+            self.assertEqual(self.manager.nas_hash_status()['state'],'unverified')
+
+    def test_nas_hash_check_rejects_active_upload_and_has_explicit_command(self):
+        with patch.object(self.manager,'python',return_value=sys.executable):
+            command,cwd=self.manager.command('nas','hash-check')
+        self.assertEqual(command[-1],'remote-hash-check')
+        cfg=self.manager.config('nas')
+        with patch.object(self.manager,'_validate',return_value=''):
+            self.manager.save_config('nas',{**cfg['data'],'verification_method':'ssh','remote_hash':{
+                **cfg['data']['remote_hash'],'enabled':True,'root_path':'/volume1/share'}},cfg['revision'])
+        with patch('manager.locked',return_value=True),patch.object(self.manager,'action') as action:
+            with self.assertRaisesRegex(ValueError,'停止'):self.manager.nas_hash_check()
+        action.assert_not_called()
+
+    def test_analysis_cache_cleanup_command_uses_shared_maintenance_cli(self):
+        with patch.object(self.manager,'python',return_value=sys.executable):
+            command,cwd=self.manager.command('sync','clean-analysis-cache')
+        self.assertEqual(command,[sys.executable,'-u',str(self.sync/'app/archive_cache.py'),
+                                 '--cleanup','--base-dir',str(self.sync)])
+        self.assertEqual(cwd,self.sync)
+        sync=next(t for t in self.manager.overview()['tools'] if t['id']=='sync')
+        self.assertIn('clean-analysis-cache',sync['actions'])
+
+    def test_analysis_cache_cleanup_rejects_busy_worker_before_launch(self):
+        queue=self.sync/'runtime/file_analysis/queue.sqlite3'
+        queue.parent.mkdir(parents=True,exist_ok=True)
+        queue.touch()
+        with patch.object(self.manager,'python',return_value=sys.executable), \
+             patch('manager.locked',side_effect=lambda p:Path(p)==queue.parent/'worker.lock'), \
+             patch('manager.subprocess.Popen') as launch:
+            with self.assertRaisesRegex(ValueError,'后台解析'):
+                self.manager.action('sync','clean-analysis-cache')
+        launch.assert_not_called()
+
+    def test_history_cleanup_status_read_never_launches_cleanup(self):
+        with patch('manager.subprocess.Popen',side_effect=AssertionError('read launched cleanup')):
+            self.assertEqual(self.manager.history_cleanup_status()['state'],'idle')
+        self.assertFalse((self.sync/'runtime/history_retention_status.json').exists())
+
+    def test_manual_history_cleanup_command_is_explicit_and_independent(self):
+        with patch.object(self.manager,'python',return_value=sys.executable):
+            command,cwd = self.manager.command('sync','clean-history')
+        self.assertIn('--execute',command)
+        self.assertIn('--progress-pipe',command)
+        self.assertEqual(Path(command[2]),self.sync/'app/history_retention.py')
+        self.assertEqual(cwd,self.sync)
+        self.assertNotIn('scheduler',command)
+
+    def test_manual_history_cleanup_rejects_busy_download_before_launch(self):
+        with patch.object(self.manager,'python',return_value=sys.executable), \
+             patch('manager.locked',side_effect=lambda p:Path(p).name=='sync.lock'), \
+             patch('manager.subprocess.Popen') as launch:
+            with self.assertRaisesRegex(ValueError,'同步下载'):
+                self.manager.action('sync','clean-history')
+        launch.assert_not_called()
+
+    def test_history_cleanup_reports_failed_start_instead_of_polling_forever(self):
+        from manager import writing
+        with writing(self.manager.tasks_path) as db:
+            db.execute("INSERT INTO tasks VALUES('new-job','sync','clean-history','manual','failed',123,2,'2026-11-08','2026-11-08','manual.log')")
+        status = self.manager.history_cleanup_status()
+        self.assertEqual(status['job_id'],'new-job')
+        self.assertEqual(status['state'],'failed')
+
+    def test_history_cleanup_stale_status_does_not_hide_process_exit(self):
+        from manager import writing
+        self.manager.history_progress=dict(job_id='finished-job',state='running',deleted_files=2,manual_only=True)
+        with writing(self.manager.tasks_path) as db:
+            db.execute("INSERT INTO tasks VALUES('finished-job','sync','clean-history','manual','succeeded',123,0,'2026-11-08','2026-11-08','manual.log')")
+        status=self.manager.history_cleanup_status()
+        self.assertEqual(status['state'],'interrupted')
+        self.assertEqual(status['deleted_files'],2)
+
+    def test_history_cleanup_status_never_reads_obsolete_state_file(self):
+        from manager import writing
+        with writing(self.manager.tasks_path) as db:
+            db.execute("INSERT INTO tasks VALUES('live-job','sync','clean-history','manual','running',123,NULL,'2026-11-08',NULL,'manual.log')")
+        with patch('manager.read_json',side_effect=AssertionError('must use memory')):
+            status=self.manager.history_cleanup_status()
+        self.assertEqual(status['state'],'running')
+
+    def test_history_cleanup_pipe_updates_memory_and_stops_without_files(self):
+        command=[sys.executable,'-u','-c',
+                 "import sys,json; job=sys.argv[-1]; "
+                 "print('@history-cleanup '+json.dumps(dict(job_id=job,state='running',deleted_files=3)),flush=True); "
+                 "request=json.loads(sys.stdin.readline()); "
+                 "assert request==dict(command='stop',job_id=job); "
+                 "print('@history-cleanup '+json.dumps(dict(job_id=job,state='stopped',deleted_files=3)),flush=True); "
+                 "print('cleanup safely stopped',flush=True)"]
+        with patch.object(self.manager,'command',return_value=(command,self.sync)):
+            task=self.manager.action('sync','clean-history')
+        process=self.manager.children[task['id']]
+        try:
+            import time
+            deadline=time.monotonic()+5
+            while time.monotonic()<deadline:
+                if self.manager.history_cleanup_status().get('deleted_files')==3:
+                    break
+                time.sleep(.01)
+            self.assertEqual(self.manager.history_cleanup_status()['deleted_files'],3)
+            with patch('manager.subprocess.Popen',side_effect=AssertionError('stop must use existing pipe')):
+                result=self.manager.action('sync','stop-history-cleanup')
+            self.assertEqual(result['id'],task['id'])
+            process.wait(timeout=5)
+            self.assertEqual(self.manager.history_cleanup_status()['state'],'stopped')
+            logs=list((self.root/'logs').rglob('*.log'))
+            text=logs[0].read_text(encoding='utf-8')
+            self.assertNotIn('"state": "running"',text)
+            self.assertIn('"state": "stopped"',text)
+            self.assertFalse(list((self.sync/'runtime').glob('history_retention*.json*')))
+        finally:
+            if process.poll() is None:
+                process.stdin.close()
+                process.wait(timeout=5)
+            self.manager.tasks()
+
+    def test_history_cleanup_memory_is_not_restored_after_restart(self):
+        from manager import writing
+        self.manager.history_progress=dict(job_id='old-job',state='running',deleted_files=99)
+        with writing(self.manager.tasks_path) as db:
+            db.execute("INSERT INTO tasks VALUES('old-job','sync','clean-history','manual','running',123,NULL,'2026-11-08',NULL,'manual.log')")
+        restarted=Manager(self.root,self.manager.runtime)
+        status=restarted.history_cleanup_status()
+        self.assertEqual(status['state'],'interrupted')
+        self.assertNotIn('deleted_files',status)
+
     def test_missing_nas_config_can_be_completed_and_saved(self):
         path = self.manager.config_path('nas')
         path.unlink()
@@ -91,7 +262,7 @@ class ManagerTests(unittest.TestCase):
                 (self.sync/'downloads'/f'{identity}.pcf').write_bytes(content)
                 db.execute('INSERT INTO files VALUES(?,?,?,?,?,?,?,?)',
                     ('p',identity,identity+'.pcf','downloads/'+identity+'.pcf',len(content),hashlib.sha256(content).hexdigest(),state,active))
-        nas=dict(source_root='../downloads',download_ledger='../ledger.sqlite3',target_root='\\\\nas\\share',
+        nas=dict(source_root='../downloads',download_ledger='../ledger.sqlite3',target_root='\\\\nas\\share',verification_method='smb',
             start_hour_beijing=12,stop_hour_beijing=0,chunk_bytes=1048576,retry_attempts=2,preserve_previous_versions=True)
         self.manager.config_path('nas').write_text(json.dumps(nas),encoding='utf-8')
         self.manager.config_path('wechat').write_text('{"chats":[],"codex_enabled":false,"allow_send":false}',encoding='utf-8')
@@ -101,9 +272,33 @@ class ManagerTests(unittest.TestCase):
         with patch('manager.subprocess.Popen',side_effect=AssertionError('Read launched a process')):
             info=self.manager.overview()
         self.assertEqual(info['downloads'],{'done':1,'pending':1})
+        self.assertIsNone(info['file_inventory'])
+        self.assertIsNone(info['download_directory'])
         self.assertIsNone(info['analysis'])
-        self.assertEqual(len(info['tools']),3)
+        self.assertEqual(len(info['tools']),4)
         self.assertEqual(self.ledger.read_bytes(),before)
+
+    def test_overview_reads_latest_generated_snapshot_without_rescanning(self):
+        folder=self.sync/'logs/2026-11-02'
+        folder.mkdir(parents=True)
+        directory=dict(total={'files':3,'bytes':9},latest={'files':1,'bytes':3},
+                       retained={'files':1,'bytes':3},other={'files':1,'bytes':3},new={'files':0,'bytes':0})
+        (folder/'推送状态.json').write_text(json.dumps({'download_directory':directory}),encoding='utf-8')
+        body='snapshot text'
+        snapshot=dict(snapshot_format='daily-file-snapshot-v1',date='2026-11-02',ready=True,
+                      generated_at='2026-11-02T10:40:00+08:00',text=body,
+                      body_sha256=hashlib.sha256(body.encode()).hexdigest(),
+                      file_inventory=dict(total=directory['total'],downloads=directory['total'],
+                                          history=dict(files=0,bytes=0),pending_publication=dict(files=0,bytes=0)))
+        (folder/'日报快照.json').write_text(json.dumps(snapshot),encoding='utf-8')
+        with patch('manager.now',return_value='2026-11-02T11:00:00+08:00'):
+            self.assertEqual(self.manager.overview()['download_directory']['files'],3)
+        (self.sync/'downloads/new.pdf').write_bytes(b'new')
+        with patch('manager.now',return_value='2026-11-03T11:00:00+08:00'):
+            info=self.manager.overview()
+            self.assertEqual(info['download_directory']['files'],3)
+            self.assertEqual(info['file_inventory']['total']['files'],3)
+            self.assertEqual(info['file_inventory']['snapshot_date'],'2026-11-02')
 
     def test_file_filter_preview_and_stale_version(self):
         result=self.manager.files(query='one')
@@ -148,7 +343,14 @@ class ManagerTests(unittest.TestCase):
         self.manager.children[task['id']].wait(timeout=5)
         result=self.manager.tasks()[0]
         self.assertEqual(result['state'],'succeeded')
-        self.assertIn('offline test',self.manager.logs()['items'][0]['message'])
+        self.assertTrue(any('offline test' in row['message'] for row in self.manager.logs()['items']))
+
+    def test_nas_receives_single_log_capture_flag(self):
+        command=[sys.executable,'-c',"import os;print('capture='+os.environ.get('PROJECT_TOOLS_LOG_CAPTURED',''),flush=True)"]
+        with patch.object(self.manager,'command',return_value=(command,self.root)):
+            task=self.manager.action('nas','check')
+        self.manager.children[task['id']].wait(timeout=5)
+        self.assertTrue(any('capture=1' in row['message'] for row in self.manager.logs('nas',compact=False)['items']))
 
     @patch('manager.Manager.python',return_value=sys.executable)
     def test_command_allowlist_never_uses_shell(self, mock_python):
@@ -169,7 +371,7 @@ class ManagerTests(unittest.TestCase):
         actual=Path(__file__).resolve().parents[2]/TOOLS['sync']['folder']/'app'
         target=self.sync/'app'
         target.mkdir()
-        for name in ('app_paths.py','push_settings.py','analysis_settings.py'):
+        for name in ('paths.py','push_settings.py','analysis_settings.py'):
             (target/name).write_bytes((actual/name).read_bytes())
         config=self.manager.config('sync')
         data={**config['data'],'briefing_title':'本地测试简报','recipients':['模拟群'],
@@ -196,7 +398,7 @@ class ManagerTests(unittest.TestCase):
         (package/'__init__.py').write_text('',encoding='utf-8')
         (package/'config.py').write_bytes((actual/'wechat_local/config.py').read_bytes())
         config=self.manager.config('wechat')
-        self.assertEqual(config['data']['codex_timeout_seconds'],600)
+        self.assertEqual(config['data']['codex_timeout_seconds'],0)
         self.assertEqual(config['data']['reply_max_age_seconds'],900)
         self.assertTrue(config['data']['mention_reply_sender'])
         self.assertTrue(config['data']['query_progress_enabled'])
@@ -224,7 +426,7 @@ class ManagerTests(unittest.TestCase):
             self.assertEqual(result['data']['file_send_cleanup_days'],7)
             self.assertFalse(result['data']['allow_send'])
             with self.assertRaises(ValueError):
-                self.manager.save_config('wechat',{**result['data'],'codex_timeout_seconds':0},result['revision'])
+                self.manager.save_config('wechat',{**result['data'],'codex_timeout_seconds':-1},result['revision'])
             with self.assertRaises(ValueError):
                 self.manager.save_config('wechat',{**result['data'],'codex_session_prewarm_percent':90},result['revision'])
             with self.assertRaises(ValueError):
@@ -262,7 +464,7 @@ class ManagerTests(unittest.TestCase):
         static.mkdir()
         (static/'index.html').write_text('<h1>local tools</h1>',encoding='utf-8')
         server=ThreadingHTTPServer(('127.0.0.1',0),handler(self.manager,'test-token',static))
-        thread=threading.Thread(target=server.serve_forever,daemon=True)
+        thread=threading.Thread(target=server.serve_forever,kwargs={'poll_interval':.01},daemon=True)
         thread.start()
         base=f'http://127.0.0.1:{server.server_port}'
         try:

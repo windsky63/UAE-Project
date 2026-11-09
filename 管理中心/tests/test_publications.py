@@ -39,14 +39,25 @@ class PublicationTests(unittest.TestCase):
         (self.folder / '微信推送文.txt').write_bytes(raw)
         self.text_marker = dict(date=self.day, generated_at=self.generated, ready=True,
                                 text_file='微信推送文.txt', text_sha256=hashlib.sha256(raw).hexdigest())
+        live=patch('daily_publications.live_text',side_effect=self.live_daily)
+        live.start()
+        self.addCleanup(live.stop)
         self.image = self.report / 'fixture.png'
         self.image.write_bytes(b'fixture image')
         self.report_marker = dict(date=self.day, ready=True, demo=False, generated_at=self.generated,
                                   images=[dict(path=str(self.image),sha256=hashlib.sha256(self.image.read_bytes()).hexdigest())])
         self.write_markers()
 
+    def live_daily(self, base, *, require_ready=False):
+        if require_ready and not self.text_marker['ready']:
+            raise ValueError('下载日报尚未就绪，未推送')
+        return self.text,dict(self.text_marker)
+
     def write_markers(self):
         (self.folder / '推送状态.json').write_text(json.dumps(self.text_marker), encoding='utf-8')
+        (self.folder/'日报快照.json').write_text(json.dumps(dict(self.text_marker,
+            snapshot_format='daily-file-snapshot-v1',text=self.text,
+            body_sha256=hashlib.sha256(self.text.encode()).hexdigest())),encoding='utf-8')
         (self.report / '简报推送状态.json').write_text(json.dumps(self.report_marker), encoding='utf-8')
 
     def journal(self, rows):
@@ -89,7 +100,8 @@ class PublicationTests(unittest.TestCase):
     def test_manual_selection_uses_saved_chat_switches_and_needs_only_selected_files(self):
         self.image.unlink()
         marker, settings = prepare_manual(self.base,self.day,'text',self.settings)
-        self.assertEqual(marker['wechat_push_text'],self.text)
+        self.assertTrue(marker['live_text'])
+        self.assertNotIn('wechat_push_text',marker)
         self.assertTrue(settings['publish_text'])
         self.assertFalse(settings['publish_briefing'])
         self.assertEqual(marker['images'],[])
@@ -104,8 +116,7 @@ class PublicationTests(unittest.TestCase):
         self.text_marker['ready']=True
         self.write_markers()
         (self.folder / '微信推送文.txt').write_text('tampered',encoding='utf-8')
-        with self.assertRaisesRegex(ValueError,'校验失败'):
-            prepare_manual(self.base,self.day,'text',self.settings)
+        self.assertTrue(prepare_manual(self.base,self.day,'text',self.settings)[0]['live_text'])
         self.report_marker['demo']=True
         self.write_markers()
         with self.assertRaisesRegex(ValueError,'模拟'):
@@ -140,13 +151,15 @@ class PublicationTests(unittest.TestCase):
     def test_worker_records_lifecycle_using_stub_sender_modules(self):
         app=self.base/'app'
         app.mkdir()
+        (app/'reporting.py').write_text('def read_live_push_text(base, at=None, require_ready=False):\n    return '+
+            repr((self.text,self.text_marker))+'\n',encoding='utf-8')
         (app/'push_settings.py').write_text('def load_settings(base):\n    return '+repr(self.settings)+'\n',encoding='utf-8')
         (app/'wechat_delivery.py').write_text(
             'import json\n'
             'def deliver(base,marker,settings,at,cancelled=None,manual=False):\n'
             '    assert manual is True\n'
             '    assert settings["publish_text"] and not settings["publish_briefing"]\n'
-            '    assert json.loads(marker.read_text(encoding="utf-8"))["wechat_push_text"] == "fixture daily text"\n'
+            '    assert json.loads(marker.read_text(encoding="utf-8"))["live_text"] is True\n'
             '    return dict(complete=True,submitted=1,already_submitted=0,failed=0,uncertain=0,errors=[])\n',encoding='utf-8')
         package=app/'wechat_push'
         package.mkdir()
