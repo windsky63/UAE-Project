@@ -12,15 +12,38 @@ def body(line):
     return re.sub(r'^wechat_local(?:\.[\w]+)*:\s*','',text)
 
 
+def presentation(message):
+    """Keep routine rows short; expose a complete traceback only on expansion."""
+    lines = message.splitlines()
+    if not lines:
+        return {}
+    summary = body(lines[0])
+    diagnostic = '\n'.join(lines[1:])
+    if 'Traceback' in message:
+        cause = next((body(line) for line in reversed(lines)
+                      if re.match(r'[\w.]+(?:Error|Exception):', body(line))), '')
+        if summary.startswith('Traceback'):
+            summary = cause or '程序发生异常，请展开诊断详情。'
+        elif cause and cause not in summary:
+            summary += '；'+cause
+        diagnostic = message
+    return dict(summary=summary, diagnostic=diagnostic)
+
+
 def severity(line):
     explicit=re.search(r'\[(ERROR|CRITICAL|FATAL|WARNING|WARN)\]',line,re.I)
     if explicit:
-        return 'WARNING' if explicit[1].upper() in ('WARNING','WARN') else 'ERROR'
+        return 'WARNING' if explicit[1].upper() in ('WARNING','WARN') else 'CRITICAL' if explicit[1].upper() in ('CRITICAL','FATAL') else 'ERROR'
+    explicit_info=re.search(r'\[(INFO|DEBUG)\]',line,re.I)
+    if explicit_info and not re.search(r'Traceback|\b[\w.]+(?:Error|Exception):',line):return 'INFO'
     if body(line).startswith('微信监听心跳：'):return 'INFO'
     code=re.search(r'退出码[=：:]\s*(-?\d+)',line)
     if code and int(code[1]) != 0:
         return 'WARNING' if int(code[1])==2 else 'ERROR'
     if '退出码=尚未退出' in line:return 'WARNING'
+    if body(line) == '启动后台解析；此文件保存标准错误，进度见 analysis.log。':
+        return 'INFO'
+    line=re.sub(r'''(?i)["']?\b(?:error|errors|failed|conflict|uncertain)["']?\s*[:=]\s*(?:0|null|None|false|\[\]|\{\})(?=[,}\s]|$)''','',line)
     evidence=re.sub(r'(?:失败|冲突|待核实|待核对)\s*[:：=]?\s*0\b','',line)
     evidence=re.sub(r'无(?:失败|错误|异常)|(?:error|exception)\s*[:=]\s*(?:null|None)\b','',evidence,flags=re.I)
     if ERROR.search(evidence) or re.search(r'\b[\w.]+(?:Error|Exception):|失败\s*[:：]?\s*[1-9]\d*',evidence):return 'ERROR'
@@ -38,7 +61,7 @@ def events(text):
         start=content.startswith(('Traceback (','During handling of the above exception','The above exception was the direct cause'))
         continuation=tracing and (content[:1].isspace() or bool(re.match(r'[\w.]+(?:Error|Exception):',content))
                                   or content.lstrip().startswith(('^','|','+')))
-        if (start and result and severity(result[-1])=='ERROR') or (continuation and result):
+        if (start and result and severity(result[-1]) in ('ERROR','CRITICAL')) or (continuation and result):
             result[-1]+='\n'+line
         else:
             result.append(line)
@@ -97,7 +120,7 @@ def progress(line):
     )
     for phase,pattern in categories:
         if re.search(pattern,text):
-            match=re.search(r'(?:完成|已完成|已检查)\s*([\d,]+)\s*/\s*([\d,]+)',text)
+            match=re.search(r'(?:完成|已完成|已检查|扫描进度[:：])\s*([\d,]+)\s*/\s*([\d,]+)',text)
             return dict(phase=phase,message=text,current=int(match[1].replace(',','')) if match else None,
                         total=int(match[2].replace(',','')) if match else None)
     return None

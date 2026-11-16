@@ -183,6 +183,7 @@ def handler(manager, token, static=None, allowed_hosts=None, direct_access=False
                     if parsed.path == '/api/tasks':
                         return self.respond(dict(items=manager.tasks(get('tool'),limit)))
                     if parsed.path == '/api/config':
+                        if get('tool')=='unit_text':return self.respond(manager.config('unit_text',date=get('date')))
                         return self.respond(manager.config(get('tool')))
                     if parsed.path == '/api/nas/hash-status':
                         return self.respond(manager.nas_hash_status())
@@ -258,9 +259,13 @@ def handler(manager, token, static=None, allowed_hosts=None, direct_access=False
                 if self.path == '/api/codex/stop':
                     return self.respond(chat.stop(data['session_id']))
                 if self.path == '/api/action':
+                    if data.get('action')=='unit-text-send':
+                        if data.get('confirmed') is not True or not isinstance(data.get('expected_sha'),str):raise ValueError('请预览并确认单元资料推送文后发送')
+                        return self.respond(manager.action(data['tool'],data['action'],unit_text_sha=data['expected_sha']))
                     if str(data['action']).startswith('push-') or data['action'] == 'briefing-send':
                         raise ValueError('请通过每日推送页面确认后执行')
-                    return self.respond(manager.action(data['tool'],data['action']))
+                    return self.respond(manager.action(data['tool'],data['action'],
+                        **({'plan_id': data['plan_id']} if 'plan_id' in data else {})))
                 if self.path == '/api/publications/push':
                     if data.get('confirmed') is not True:
                         raise ValueError('请先确认推送内容及接收会话')
@@ -313,7 +318,7 @@ def main():
                 request = Request(f'http://{parsed.netloc}/api/overview',
                                   headers={'Cookie': 'project_session=' + supplied})
                 with urlopen(request, timeout=2) as response:
-                    if len(json.load(response).get('tools', [])) == 3:
+                    if json.load(response).get('tools'):
                         print('管理中心已在运行。', flush=True)
                         if not args.no_browser:
                             webbrowser.open(saved['url'])

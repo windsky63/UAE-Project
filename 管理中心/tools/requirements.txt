@@ -1,0 +1,6 @@
+requests>=2.31
+pydantic>=2.7
+psutil>=5.9
+openpyxl>=3.1
+Pillow>=10
+cryptography>=42

@@ -19,6 +19,60 @@ from server import handler
 
 
 class ManagerTests(unittest.TestCase):
+    def test_analysis_inaccessible_lock_is_unknown_not_running(self):
+        with patch.object(self.manager,'tasks',return_value=[]),patch('manager.locked',return_value='unknown'):
+            self.assertEqual(self.manager.live('analysis'),'unknown')
+
+    def test_download_settings_exclude_analysis_and_cannot_modify_publication_config(self):
+        path=self.manager.config_path('analysis')
+        path.parent.mkdir(parents=True,exist_ok=True)
+        path.write_text('{"briefing_title":"preserved"}',encoding='utf-8')
+        original=path.read_bytes()
+        settings=self.manager.config('sync')
+        self.assertTrue(settings['read_only'])
+        self.assertEqual(set(settings['data']),{'download_start_time_beijing','download_end_time_beijing','push_text_generation'})
+        with self.assertRaises(ValueError):
+            self.manager.save_config('sync',{'briefing_title':'wrong owner'},'')
+        self.assertEqual(path.read_bytes(),original)
+
+    def test_manual_ledger_export_uses_offline_entry_point(self):
+        with patch.object(self.manager,'python',return_value=sys.executable):
+            command,cwd=self.manager.command('sync','export-ledger')
+        self.assertIn('ledger_export',command)
+        self.assertNotIn('--data-home',command)
+        self.assertIn(str(self.sync/'main.py'),command)
+        with self.assertRaises(ValueError):
+            self.manager.command('analysis','export-ledger')
+        overview={tool['id']:tool for tool in self.manager.overview()['tools']}
+        self.assertIn('export-ledger',overview['sync']['actions'])
+        self.assertNotIn('export-ledger',overview['analysis']['actions'])
+        self.assertEqual(cwd,self.sync)
+
+    def test_ima_background_tasks_use_summary_and_keep_control_commands_unchanged(self):
+        for action in ('start', 'collect', 'plan', 'sync-once'):
+            with self.subTest(action=action):
+                with patch.object(self.manager, 'python', return_value=sys.executable):
+                    command, _ = self.manager.command('ima', action)
+                self.assertIn('--summary', command)
+        for action in ('stop', 'check'):
+            with patch.object(self.manager, 'python', return_value=sys.executable):
+                self.assertNotIn('--summary', self.manager.command('ima', action)[0])
+
+    def test_nas_manual_once_is_explicit_and_available_with_resident_scheduler(self):
+        with patch.object(self.manager,'python',return_value=sys.executable):
+            command,_=self.manager.command('nas','upload-once')
+        self.assertEqual(command[-1],'manual-once')
+        self.assertIn('upload-once',next(t for t in self.manager.overview()['tools'] if t['id']=='nas')['actions'])
+
+    def test_nas_ledger_interval_is_saved_and_rejects_less_than_one_hour(self):
+        current=self.manager.config('nas')
+        self.assertEqual(current['data']['ledger_update_interval_minutes'],60)
+        for value in (0,59,True,60.5,'60',10081):
+            with self.subTest(value=value),self.assertRaisesRegex(ValueError,'更新间隔'):
+                self.manager.save_config('nas',{**current['data'],'ledger_update_interval_minutes':value},current['revision'])
+        saved=self.manager.save_config('nas',{**current['data'],'ledger_update_interval_minutes':120},current['revision'])
+        self.assertEqual(saved['data']['ledger_update_interval_minutes'],120)
+
     @unittest.skipUnless(sys.platform=='win32','Windows interactive console launcher')
     def test_nas_setup_uses_real_console_batch_entry_without_redirected_input(self):
         nas=self.manager.folder('nas')
@@ -66,6 +120,25 @@ class ManagerTests(unittest.TestCase):
                 self.manager.save_config('nas',{**cfg['data'],'retry_attempts':3},cfg['revision'])
             self.assertEqual(self.manager.nas_hash_status()['state'],'unverified')
 
+    def test_nas_mode_switch_disables_stale_ssh_and_preserves_connection_settings(self):
+        current=self.manager.config('nas')
+        remote={**current['data']['remote_hash'],'enabled':True,'host':'nas',
+                'root_path':'/volume1/share','username':'reader'}
+        with patch.object(self.manager,'_validate',return_value=''):
+            ssh=self.manager.save_config('nas',{**current['data'],'verification_method':'ssh','remote_hash':remote},current['revision'])
+        with patch.object(self.manager,'_validate',side_effect=AssertionError('SMB validated SSH')), \
+             patch('manager.subprocess.Popen',side_effect=AssertionError('SMB opened SSH')):
+            smb=self.manager.save_config('nas',{**ssh['data'],'verification_method':'smb'},ssh['revision'])
+            self.assertFalse(smb['data']['remote_hash']['enabled'])
+            self.assertEqual(self.manager.nas_hash_status()['state'],'disabled')
+            with self.assertRaises(ValueError):self.manager.nas_hash_check()
+        self.assertEqual(smb['data']['remote_hash']['root_path'],'/volume1/share')
+        with patch.object(self.manager,'_validate',return_value='') as validate:
+            restored=self.manager.save_config('nas',{**smb['data'],'verification_method':'ssh'},smb['revision'])
+        validate.assert_called_once()
+        self.assertTrue(restored['data']['remote_hash']['enabled'])
+        self.assertFalse(restored['data']['remote_hash']['fallback_to_smb'])
+
     def test_nas_hash_check_rejects_active_upload_and_has_explicit_command(self):
         with patch.object(self.manager,'python',return_value=sys.executable):
             command,cwd=self.manager.command('nas','hash-check')
@@ -80,12 +153,14 @@ class ManagerTests(unittest.TestCase):
 
     def test_analysis_cache_cleanup_command_uses_shared_maintenance_cli(self):
         with patch.object(self.manager,'python',return_value=sys.executable):
-            command,cwd=self.manager.command('sync','clean-analysis-cache')
-        self.assertEqual(command,[sys.executable,'-u',str(self.sync/'app/archive_cache.py'),
-                                 '--cleanup','--base-dir',str(self.sync)])
+            command,cwd=self.manager.command('analysis','clean-analysis-cache')
+        self.assertIn('archive_cache',command)
+        self.assertIn('--cleanup',command)
         self.assertEqual(cwd,self.sync)
         sync=next(t for t in self.manager.overview()['tools'] if t['id']=='sync')
-        self.assertIn('clean-analysis-cache',sync['actions'])
+        self.assertNotIn('analysis',sync['actions'])
+        analysis=next(t for t in self.manager.overview()['tools'] if t['id']=='analysis')
+        self.assertIn('analysis',analysis['actions'])
 
     def test_analysis_cache_cleanup_rejects_busy_worker_before_launch(self):
         queue=self.sync/'runtime/file_analysis/queue.sqlite3'
@@ -95,7 +170,7 @@ class ManagerTests(unittest.TestCase):
              patch('manager.locked',side_effect=lambda p:Path(p)==queue.parent/'worker.lock'), \
              patch('manager.subprocess.Popen') as launch:
             with self.assertRaisesRegex(ValueError,'后台解析'):
-                self.manager.action('sync','clean-analysis-cache')
+                self.manager.action('analysis','clean-analysis-cache')
         launch.assert_not_called()
 
     def test_history_cleanup_status_read_never_launches_cleanup(self):
@@ -250,7 +325,7 @@ class ManagerTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root=Path(self.temp.name)
         for meta in TOOLS.values():
-            (self.root/meta['folder']/'runtime').mkdir(parents=True)
+            (self.root/'tools'/meta['folder']/'runtime').mkdir(parents=True)
         self.manager=Manager(self.root,self.root/'admin-runtime')
         self.sync=self.manager.folder('sync')
         (self.sync/'downloads').mkdir()
@@ -275,7 +350,7 @@ class ManagerTests(unittest.TestCase):
         self.assertIsNone(info['file_inventory'])
         self.assertIsNone(info['download_directory'])
         self.assertIsNone(info['analysis'])
-        self.assertEqual(len(info['tools']),4)
+        self.assertEqual(len(info['tools']),5)
         self.assertEqual(self.ledger.read_bytes(),before)
 
     def test_overview_reads_latest_generated_snapshot_without_rescanning(self):
@@ -367,29 +442,29 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(clean_log('password=abc token unaffected'),'password=[已隐藏] token unaffected')
 
     @patch('manager.Manager.python',return_value=sys.executable)
-    def test_sync_config_uses_original_validator_without_platform_access(self, mock_python):
-        actual=Path(__file__).resolve().parents[2]/TOOLS['sync']['folder']/'app'
-        target=self.sync/'app'
-        target.mkdir()
+    def test_analysis_config_uses_original_validator_without_platform_access(self, mock_python):
+        actual=Path(__file__).resolve().parents[2]/'tools'/TOOLS['analysis']['folder']/'app'
+        target=self.manager.folder('analysis')/'app'
+        target.mkdir(parents=True)
         for name in ('paths.py','push_settings.py','analysis_settings.py'):
             (target/name).write_bytes((actual/name).read_bytes())
-        config=self.manager.config('sync')
+        config=self.manager.config('analysis')
         data={**config['data'],'briefing_title':'本地测试简报','recipients':['模拟群'],
               'analysis_poll_seconds':60,'analysis_idle_log_seconds':120,'analysis_idle_exit_seconds':300}
-        result=self.manager.save_config('sync',data,config['revision'])
+        result=self.manager.save_config('analysis',data,config['revision'])
         self.assertEqual(result['data']['briefing_title'],'本地测试简报')
         self.assertEqual(result['data']['analysis_poll_seconds'],60)
         self.assertEqual(result['data']['analysis_idle_log_seconds'],120)
         self.assertEqual(result['data']['analysis_idle_exit_seconds'],300)
         with self.assertRaises(ValueError):
-            self.manager.save_config('sync',{**result['data'],'analysis_poll_seconds':0},result['revision'])
+            self.manager.save_config('analysis',{**result['data'],'analysis_poll_seconds':0},result['revision'])
         invalid={**result['data'],'prepare_time_beijing':'12:00','send_time_beijing':'11:00'}
         with self.assertRaises(ValueError):
-            self.manager.save_config('sync',invalid,result['revision'])
-        self.assertEqual(self.manager.config('sync')['revision'],result['revision'])
+            self.manager.save_config('analysis',invalid,result['revision'])
+        self.assertEqual(self.manager.config('analysis')['revision'],result['revision'])
 
     def test_wechat_config_uses_pydantic_before_saving(self):
-        actual=Path(__file__).resolve().parents[2]/TOOLS['wechat']['folder']
+        actual=Path(__file__).resolve().parents[2]/'tools'/TOOLS['wechat']['folder']
         python=actual.parent/'.venv-analysis/Scripts/python.exe'
         if not python.is_file():
             self.skipTest('Local WeChat Python environment unavailable')
@@ -434,7 +509,7 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(self.manager.config('wechat')['revision'],result['revision'])
 
     def test_wechat_directory_defaults_discover_siblings_and_manual_empty_is_preserved(self):
-        extra = self.root/'项目资料 空格'
+        extra = self.root/'tools/项目资料 空格'
         extra.mkdir()
         config = self.manager.config('wechat')
         self.assertTrue(config['data']['codex_auto_access_dirs'])

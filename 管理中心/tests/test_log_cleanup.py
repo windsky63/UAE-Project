@@ -67,6 +67,8 @@ class LogCleanupTests(unittest.TestCase):
         self.addCleanup(self.live.stop)
 
     def file(self, relative, *, old=True):
+        if relative.split('/')[0] in {item['folder'] for item in TOOLS.values()}:
+            relative = 'tools/' + relative
         path = self.root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b'fixture record\n')

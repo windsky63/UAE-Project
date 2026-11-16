@@ -3,7 +3,7 @@ const {chromium}=require('playwright');
 const {expect}=require('@playwright/test');
 const http=require('http'),fs=require('fs'),path=require('path');
 const dist=path.resolve(__dirname,'dist');
-const screenshots=path.resolve(__dirname,'../../runtime/test-reports/overview-ui-screenshots');
+const screenshots=path.resolve(__dirname,'../runtime/test-reports/overview-ui-screenshots');
 const mime={'.html':'text/html','.js':'application/javascript','.css':'text/css','.woff2':'font/woff2'};
 const server=http.createServer((req,res)=>{
   const name=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
@@ -37,6 +37,12 @@ const server=http.createServer((req,res)=>{
     await expect(cards).toHaveCount(3);
     await expect(page).toHaveTitle(/管理中心/);
     await expect(cards.nth(0)).toContainText('1 / 4');
+    tools.find(item=>item.id==='nas').state='unknown';
+    tools.find(item=>item.id==='ima').state='busy';
+    await page.reload();
+    await expect(cards.nth(0)).toContainText('1 / 4');
+    await expect(page.getByText('运行状态无法确认',{exact:true})).toBeVisible();
+    await expect(page.getByText('任务处理中',{exact:true})).toBeVisible();
     await expect(page.locator('.section-subtitle').first()).toContainText('4 个工具');
     await expect(cards.nth(1)).toContainText('本地文件总量');
     await expect(cards.nth(1)).toContainText('19,538');
@@ -57,7 +63,7 @@ const server=http.createServer((req,res)=>{
         return identity.right<=actions.left||identity.bottom<=actions.top;
       })).toBe(true);
       await page.getByLabel('查看正式目录、历史目录和待发布文件说明',{exact:true}).focus();
-      const tooltip=page.getByRole('tooltip').locator('.v-overlay__content');
+      const tooltip=page.getByRole('tooltip').filter({hasText:'正式目录'}).locator('.v-overlay__content');
       await expect(tooltip).toBeVisible();
       await expect(tooltip).toContainText('待发布缓存 222');
       await expect(tooltip).toContainText('历史目录 5,180');

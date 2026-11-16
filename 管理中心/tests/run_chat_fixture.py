@@ -15,7 +15,7 @@ runtime=HOME/'runtime'
 root=runtime/'chat-browser-workspace'
 root.mkdir(parents=True,exist_ok=True)
 (root/'fixture.txt').write_text('SIMULATION: shop=2, field=1',encoding='utf-8')
-config=root/TOOLS['wechat']['folder']
+config=root / 'tools' / TOOLS['wechat']['folder']
 config.mkdir(exist_ok=True)
 (config/'wechat.codex.json').write_text('{"codex_command":["codex"]}',encoding='utf-8')
 manager=Manager(root,runtime/'chat-browser-fixture')

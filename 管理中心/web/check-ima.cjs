@@ -17,7 +17,7 @@ const server=http.createServer((req,res)=>{
   try{
     fs.mkdirSync(screenshots,{recursive:true});
     const page=await browser.newPage({viewport:{width:1440,height:1080}});
-    const errors=[],actions=[],operations=[],recordRequests=[],clears=[];
+    const errors=[],actions=[],operations=[],recordRequests=[],clears=[],taskClears=[];
     page.on('pageerror',error=>errors.push(error.message));
     page.on('console',message=>{if(['error','warning'].includes(message.type()))errors.push(message.text())});
     const settings={source:'D:/资料/待同步',kb:'fake-kb',folder:'',recursive:true,collect_enabled:false,auto_sync_enabled:true,
@@ -31,9 +31,11 @@ const server=http.createServer((req,res)=>{
       history:Array.from({length:261},(_,i)=>({path:'历史文件-'+i+'.pdf',status:'done',updated:1793790000,note:'已确认入库'})),
       journal:Array.from({length:85},(_,i)=>({time:'2026-11-04 19:00:00',operation:i%2?'上传':'提取新增',path:'每日文件-'+i+'.pdf',status:'成功',reason:i%2?'目标=kb/根目录':'版本=abcdef'}))
     };
+    Object.assign(planFiles[4], {status:'ready_migrate', reason:'先迁移已有云端文件，内容未变不重复上传',
+      migration_old_path:'D:/资料/待同步/旧目录/PP-0004.pdf'});
     const snapshot={data:settings,revision:'fixture-revision',credentials_configured:true,state:'stopped',tasks:[],
       journal:'',journal_path:'D:/资料/待同步/每日更新记录.txt',collection:{revision:'c1',updated_at:'2026-11-04T19:00:00+08:00',counts:{copied:43,error:22}},
-      plan:{layout:'relative-tree-v1',files:planFiles.slice(0,20),total_files:625,counts:{ready:250,ready_update:125,unchanged:125,conflict:125},revision:'p1',updated_at:'2026-11-04T19:00:00+08:00',knowledge_base_id:'fake-kb',folder_id:'',source:settings.source}};
+      plan:{layout:'relative-tree-v1',plan_id:'reviewed-plan',executed:false,files:planFiles.slice(0,20),total_files:625,counts:planFiles.reduce((counts,item)=>{counts[item.status]=(counts[item.status]||0)+1;return counts},{}),revision:'p1',updated_at:'2026-11-04T19:00:00+08:00',knowledge_base_id:'fake-kb',folder_id:'',source:settings.source}};
     let delayNextRecords=0,delayedResponseFinished=false;
     await page.route('**/api/**',async route=>{
       const url=new URL(route.request().url()),body=route.request().postDataJSON?.();
@@ -55,7 +57,15 @@ const server=http.createServer((req,res)=>{
         const item={id:'submitted-'+actions.length,action:body.action,label:'预览上传计划',state:'running',started:'2026-11-04T19:50:00+08:00',exit_code:null,log:'latest-plan.log'};
         snapshot.tasks=[item];return route.fulfill({json:{id:item.id,state:'running'}});
       }
+      if(url.pathname==='/api/config'&&url.searchParams.get('tool')==='drawing_scope')return route.fulfill({json:{data:{disciplines:['管道'],units:['027','213']},revision:'scope'}});
       if(url.pathname==='/api/config'){Object.assign(settings,body.data);return route.fulfill({json:{data:settings,revision:'saved-revision'}})}
+      if(url.pathname==='/api/tasks/clear'){
+        taskClears.push(body);
+        const deleted=datasets.tasks.filter(item=>item.state!=='running').length;
+        datasets.tasks=datasets.tasks.filter(item=>item.state==='running');
+        snapshot.tasks=datasets.tasks;
+        return route.fulfill({json:{deleted,deleted_logs:deleted,skipped:datasets.tasks.length,errors:[]}});
+      }
       if(url.pathname==='/api/logs/clear'){clears.push(body);return route.fulfill({json:{deleted:2,freed_bytes:2048,kept:1,skipped:1,errors:[]}})}
       if(url.pathname==='/api/logs')return route.fulfill({json:{items:[{id:'log',level:'ERROR',message:'ima HTTP 403（接口 check_repeated_names）；ima 200001：请求频率超限'}],total:1}});
       if(url.pathname==='/api/ima/query'){
@@ -71,13 +81,34 @@ const server=http.createServer((req,res)=>{
     const result=page.locator('.ima-results');
     const pager=()=>result.getByRole('navigation');
     const filter=()=>page.getByRole('textbox',{name:'搜索文件或记录',exact:true});
+    async function selectState(position){
+      await page.locator('.ima-filters .v-select .v-field').click();
+      await expect(page.getByRole('listbox')).toBeVisible();
+      await page.keyboard.press('Home');
+      for(let index=0;index<position;index++)await page.keyboard.press('ArrowDown');
+      await page.getByRole('option',{name:({0:'全部状态',2:'待迁移',8:'冲突'})[position],exact:true}).click();
+      await expect(page.getByRole('listbox')).toBeHidden();
+    }
     await page.goto('http://127.0.0.1:'+server.address().port+'/#ima');
     await expect(page).toHaveTitle('阿联酋项目 · 工具管理中心');
     await expect(page.getByRole('heading',{name:'最近上传计划',exact:true})).toBeVisible();
+    snapshot.state='busy';
+    await result.getByRole('button',{name:'刷新',exact:true}).click();
+    await expect(page.locator('.ima-target-state')).toContainText('任务处理中');
+    await expect(page.locator('.ima-target-state')).not.toContainText('外部任务运行中');
+    snapshot.state='unknown';
+    await result.getByRole('button',{name:'刷新',exact:true}).click();
+    await expect(page.locator('.ima-target-state')).toContainText('运行状态无法确认');
+    snapshot.state='stopped';
+    await result.getByRole('button',{name:'刷新',exact:true}).click();
     await expect(result.locator('tbody tr')).toHaveCount(20);
     await expect(result.getByRole('columnheader',{name:'云端目标路径（相对所选目录）',exact:true})).toBeVisible();
     await expect(result.locator('tbody tr').first().locator('td').nth(1)).toHaveText('项目管理规定/02_质量管理/PP-0000.pdf');
     await expect(result.locator('tbody tr').nth(3)).toContainText('云端已存在');
+    await expect(result.locator('tbody tr').nth(4)).toContainText('待迁移');
+    await expect(result.locator('tbody tr').nth(4)).not.toContainText('待上传');
+    await expect(result.locator('tbody tr').nth(4)).toContainText('内容未变不重复上传');
+    await expect(result).toContainText('待迁移 1');
     await expect(result).toContainText('按本地相对目录逐层匹配云端');
     await expect(pager()).toContainText('共 625 项');
     expect(operations).toEqual([]); // Passive rendering/pagination must not contact ima.
@@ -93,13 +124,15 @@ const server=http.createServer((req,res)=>{
     await expect(result.locator('tbody tr')).toHaveCount(50);
     await page.getByLabel('最近上传计划每页条数').selectOption('20');
     await expect(result.locator('tbody tr')).toHaveCount(20);
-    await page.locator('.ima-filters .v-select .v-field').click();
-    await page.getByRole('option',{name:'冲突',exact:true}).click();
+    await selectState(2);
+    await expect(pager()).toContainText('共 1 项');
+    await expect(result.locator('tbody tr')).toHaveCount(1);
+    await expect(result.locator('tbody tr').first()).toContainText('迁移前：D:/资料/待同步/旧目录/PP-0004.pdf');
+    await selectState(8);
     await expect(pager()).toContainText('共 125 项');
     await expect(result.locator('tbody tr').first()).toContainText('冲突');
     // Capture canonical work screen before changing task state.
-    await page.locator('.ima-filters .v-select .v-field').click();
-    await page.getByRole('option',{name:'全部状态',exact:true}).click();
+    await selectState(0);
     await expect(pager()).toContainText('共 625 项');
     await page.evaluate(()=>window.scrollTo(0,0));
     await page.screenshot({animations:'disabled',path:path.join(screenshots,'ima-work-desktop.png'),fullPage:true});
@@ -152,35 +185,46 @@ const server=http.createServer((req,res)=>{
     await result.getByRole('button',{name:'查看日志',exact:true}).first().click();
     await expect(page.getByRole('dialog')).toContainText('请求频率超限');
     const taskDialog=page.getByRole('dialog');
-    await taskDialog.getByRole('button',{name:'清除日志',exact:true}).click();
-    let clearDialog=page.getByRole('dialog').filter({hasText:'清理工具：ima 知识库'});
-    await expect(clearDialog).toContainText('运行中工具的日志会跳过');
-    await expect(clearDialog).toContainText('仅清除今天之前的日志');
+    await expect(taskDialog.getByRole('button',{name:'清除日志',exact:true})).toHaveCount(0);
+    await taskDialog.getByRole('button',{name:'关闭',exact:true}).click();
+    const clearTasks=page.getByRole('button',{name:'清除已结束任务及日志',exact:true});
+    await clearTasks.click();
+    let clearDialog=page.getByRole('dialog').filter({hasText:'清除 ima 已结束的后台任务'});
+    await expect(clearDialog).toContainText('包含今天的记录');
+    await expect(clearDialog).toContainText('上传回执、预览计划、配置和每日文件更新记录保留');
     await clearDialog.getByRole('button',{name:'取消',exact:true}).click();
-    expect(clears).toEqual([]);
-    await taskDialog.getByRole('button',{name:'清除日志',exact:true}).click();
-    clearDialog=page.getByRole('dialog').filter({hasText:'清理工具：ima 知识库'});
-    await page.screenshot({animations:'disabled',path:path.join(screenshots,'ima-clear-logs-desktop.png'),fullPage:false});
-    await clearDialog.getByRole('button',{name:'确认清除',exact:true}).click();
-    await expect.poll(()=>clears.length).toBe(1);
-    expect(clears[0]).toEqual({tool:'ima',scope:'history'});
-    await expect(page.getByRole('status').filter({hasText:'已清除 2 个日志文件'})).toBeVisible();
+    expect(taskClears).toEqual([]);
+    datasets.tasks.unshift({id:'active-task',label:'保留正在执行的上传',action:'sync-once',state:'running',started:'2026-11-04T20:00:00+08:00',log:'active.log'});
+    snapshot.tasks=[datasets.tasks[0]];snapshot.state='busy';
+    await result.getByRole('button',{name:'刷新',exact:true}).click();
+    await filter().fill('no-matching-task');
+    await expect(pager()).toContainText('共 0 项');
+    await expect(clearTasks).toBeEnabled();
+    await clearTasks.click();
+    clearDialog=page.getByRole('dialog').filter({hasText:'清除 ima 已结束的后台任务'});
+    await page.screenshot({animations:'disabled',path:path.join(screenshots,'ima-clear-tasks-desktop.png'),fullPage:false});
     await page.setViewportSize({width:390,height:844});
-    await taskDialog.getByRole('button',{name:'清除日志',exact:true}).click();
-    clearDialog=page.getByRole('dialog').filter({hasText:'清理工具：ima 知识库'});
-    await clearDialog.locator('.v-select .v-field').click();
-    await page.getByRole('option',{name:'清除全部日志，包含今天',exact:true}).click();
-    await page.screenshot({animations:'disabled',path:path.join(screenshots,'ima-clear-logs-mobile.png'),fullPage:false});
-    await clearDialog.getByRole('button',{name:'确认清除',exact:true}).click();
-    await expect.poll(()=>clears.length).toBe(2);
-    expect(clears[1]).toEqual({tool:'ima',scope:'all'});
+    await page.screenshot({animations:'disabled',path:path.join(screenshots,'ima-clear-tasks-mobile.png'),fullPage:false});
+    await clearDialog.getByRole('button',{name:'确认',exact:true}).click();
+    await expect.poll(()=>taskClears.length).toBe(1);
+    expect(taskClears[0]).toEqual({tool:'ima'});
+    expect(clears).toEqual([]);
+    await filter().fill('');
+    await expect(pager()).toContainText('共 1 项');
+    await expect(result).toContainText('保留正在执行的上传');
+    await expect(page.getByRole('status').filter({hasText:'已清除 65 条后台任务'})).toBeVisible();
+    datasets.tasks=[];snapshot.tasks=[];snapshot.state='stopped';
+    await result.getByRole('button',{name:'刷新',exact:true}).click();
+    await expect(clearTasks).toBeDisabled();
     await page.setViewportSize({width:1440,height:1080});
-
-    await page.getByRole('button',{name:'关闭',exact:true}).click();
     await page.getByRole('tab',{name:'上传记录',exact:true}).click();
+    await expect(clearTasks).toHaveCount(0);
+    await expect(page.getByRole('button',{name:'清除ima日志',exact:true})).toHaveCount(0);
+    await expect(pager()).toContainText('共 261 项');
     await pager().getByRole('button',{name:'上传记录第14页',exact:true}).click();
     await expect(result).toContainText('历史文件-260.pdf');
     await page.getByRole('tab',{name:'每日记录',exact:true}).click();
+    await expect(clearTasks).toHaveCount(0);
     await expect(result).toContainText('不代表云端上传成功');
     await pager().getByRole('button',{name:'每日文件更新记录第5页',exact:true}).click();
     await expect(result).toContainText('每日文件-84.pdf');
@@ -190,6 +234,7 @@ const server=http.createServer((req,res)=>{
     snapshot.tasks[0].state='failed';snapshot.tasks[0].exit_code=1;
     await result.getByRole('button',{name:'刷新',exact:true}).click();
     await expect(page.getByText('最近一次预览失败，本次未生成成功的计划。',{exact:false})).toBeVisible();
+    await expect(page.getByRole('button',{name:'执行预览计划',exact:true})).toBeDisabled();
     await page.evaluate(()=>window.scrollTo(0,0));
     await page.screenshot({animations:'disabled',path:path.join(screenshots,'ima-preview-failed.png'),fullPage:true});
     await page.getByRole('button',{name:'查看任务日志',exact:true}).click();
@@ -204,22 +249,32 @@ const server=http.createServer((req,res)=>{
     snapshot.collection.updated_at='2026-11-04T20:00:00+08:00';snapshot.collection.revision='c2';
     await result.getByRole('button',{name:'刷新',exact:true}).click();
     await expect(page.getByText('已完成，有提取问题',{exact:false})).toBeVisible();
-    await expect(page.getByRole('button',{name:'手动同步',exact:true})).toBeEnabled();
+    await expect(page.getByRole('button',{name:'执行预览计划',exact:true})).toBeDisabled();
     await expect(page.getByRole('button',{name:'预览上传计划',exact:true})).toBeEnabled();
     await page.getByRole('button',{name:'查看提取问题',exact:true}).click();
     await expect(result).toHaveAttribute('data-kind','collection');
-    await page.getByRole('button',{name:'手动同步',exact:true}).click();
+    await page.getByRole('button',{name:'预览上传计划',exact:true}).click();
+    snapshot.tasks[0].state='succeeded';snapshot.tasks[0].exit_code=0;
+    snapshot.plan.updated_at='2026-11-04T20:01:00+08:00';snapshot.plan.revision='p3';
+    await result.getByRole('button',{name:'刷新',exact:true}).click();
+    await expect(page.getByRole('button',{name:'执行预览计划',exact:true})).toBeEnabled();
+    await page.getByRole('button',{name:'执行预览计划',exact:true}).click();
     await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.getByRole('dialog')).toContainText('不重新提取或全量生成计划');
     expect(actions.some(value=>value.action==='sync-once')).toBeFalsy();
     await page.getByRole('button',{name:'取消',exact:true}).click();
-    await page.getByRole('button',{name:'手动同步',exact:true}).click();
+    await page.getByRole('button',{name:'执行预览计划',exact:true}).click();
+    snapshot.plan.plan_id='replacement-plan'; // The open confirmation keeps the reviewed ID.
     await page.getByRole('button',{name:'确认',exact:true}).click();
     expect(actions.some(value=>value.action==='sync-once')).toBeTruthy();
+    expect(actions.find(value=>value.action==='sync-once').plan_id).toBe('reviewed-plan');
+    snapshot.plan.executed=true;
     snapshot.tasks=[];snapshot.state='stopped';snapshot.collection.counts={copied:65};
     for(const width of [1440,768,390]){
       await page.setViewportSize({width,height:1080});
       await page.reload();
       await expect(page.getByRole('heading',{name:'最近上传计划',exact:true})).toBeVisible();
+      await expect(page.getByRole('button',{name:'执行预览计划',exact:true})).toBeDisabled();
       expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
       await page.evaluate(()=>window.scrollTo(0,0));
     await page.screenshot({animations:'disabled',path:path.join(screenshots,'ima-work-'+width+'.png'),fullPage:true});
@@ -239,6 +294,6 @@ const server=http.createServer((req,res)=>{
     await expect(result.locator('tbody tr').first()).toContainText('提取-0.pdf');
     expect(recordRequests.some(value=>Number(value.offset)>=600)).toBeTruthy();
     expect(errors).toEqual([]);
-    console.log('PASS: ima workflow/config; seven paginated lists; beyond-500 plan/beyond-200 receipts; filters/page sizes; unsaved-config guard; async task success/failure and logs; shared ima log cleanup/cancel/history/all at desktop/mobile; write confirmation; stale-response guard; 1440/768/390px. Screenshots: '+screenshots);
+    console.log('PASS: ima workflow/config; seven paginated lists; beyond-500 plan/beyond-200 receipts; filters/page sizes; unsaved-config guard; busy/unknown status; async task success/failure and logs; ended-task/log cleanup with cancel, refresh, running-task protection and no history/journal clear buttons at desktop/mobile; pinned preview confirmation; stale-response guard; 1440/768/390px. Screenshots: '+screenshots);
   }finally{await browser.close();await new Promise(resolve=>server.close(resolve))}
 })().catch(error=>{console.error(error);server.close();process.exitCode=1});

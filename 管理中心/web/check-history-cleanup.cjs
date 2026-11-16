@@ -16,7 +16,7 @@ const server=http.createServer((req,res)=>{
   const browser=await chromium.launch({channel:'msedge',headless:true});
   const errors=[],actions=[],expectedErrors=[];
   let status={state:'idle',manual_only:true},sequence=0,cacheTask=null,cacheBlocked=false;
-  const info={tools:[{id:'sync',name:'FusionLive 同步工具',state:'stopped',schedule:'每天 02:00—10:30',description:'平台资料下载与解析',actions:['start','stop','check','clean-history','stop-history-cleanup','clean-analysis-cache']}],tasks:[],downloads:{done:15027},analysis:{done:0},file_inventory:null};
+  const info={tools:[{id:'sync',name:'FusionLive 同步工具',state:'stopped',schedule:'每天 02:00—10:30',description:'平台资料下载与解析',actions:['start','stop','check','clean-history','stop-history-cleanup']},{id:'analysis',name:'资料解析及管理工具',state:'stopped',actions:['start','stop','check','briefing','clean-analysis-cache']}],tasks:[],downloads:{done:15027},analysis:{done:0},file_inventory:null};
   async function prepare(page){
     page.on('pageerror',error=>errors.push(error.message));
     page.on('console',message=>{
@@ -32,7 +32,7 @@ const server=http.createServer((req,res)=>{
         const body=route.request().postDataJSON();actions.push(body);
         if(body.action==='clean-analysis-cache'){
           if(cacheBlocked)return route.fulfill({status:409,json:{detail:'后台解析正在运行，请安全停止后再手动清理缓存。'}});
-          cacheTask={id:'cache-job',tool:'sync',action:'clean-analysis-cache',state:'running',label:'清理旧解析缓存'};
+          cacheTask={id:'cache-job',tool:'analysis',action:'clean-analysis-cache',state:'running',label:'清理旧解析缓存'};
           return route.fulfill({json:cacheTask});
         }
         if(body.action==='clean-history')status={job_id:'job-'+(++sequence),state:'running',phase:'核验保留副本',planned_files:40286,deleted_files:0,deleted_bytes:0,skipped_files:0};
@@ -43,14 +43,15 @@ const server=http.createServer((req,res)=>{
     });
     await page.goto(`http://127.0.0.1:${server.address().port}/#sync`);
     await expect(page).toHaveTitle(/管理中心/);
-    await expect(page.getByRole('heading',{name:'历史文件清理',exact:true})).toBeVisible();
+    await expect(page.getByRole('button',{name:'清理历史文件',exact:true})).toBeVisible();
   }
   try{
     const page=await browser.newPage({viewport:{width:1440,height:1050}});
     await prepare(page);
-    const panel=page.getByLabel('历史文件手动清理');
-    await expect(panel).toContainText('仅手动执行');
+    const panel=page.getByLabel('任务操作',{exact:true});
+    await expect(panel.getByRole('button',{name:'清理历史文件',exact:true})).toBeVisible();
     expect(actions).toHaveLength(0);
+    await expect(panel.locator('.v-card')).toHaveCount(0);
     await panel.getByRole('button',{name:'清理历史文件',exact:true}).click();
     await expect(panel.getByRole('button',{name:'清理历史文件',exact:true})).toBeDisabled();
     await expect(panel).toContainText('40,286');
@@ -67,8 +68,10 @@ const server=http.createServer((req,res)=>{
     await expect(panel).toContainText('已完成');
     await expect(panel).toContainText('120.0 MB');
     await page.screenshot({path:path.join(screenshots,'desktop-completed.png'),fullPage:true});
-    const cachePanel=page.getByLabel('旧解析缓存清理');
-    await expect(cachePanel).toContainText('手动执行一次解析工作流中的旧任务校验');
+    await page.goto(`http://127.0.0.1:${server.address().port}/#analysis`);
+    const cachePanel=page.getByLabel('任务操作',{exact:true});
+    await expect(cachePanel.locator('.v-card')).toHaveCount(0);
+    await expect(cachePanel.getByRole('button',{name:'清理旧解析缓存',exact:true})).toBeVisible();
     await expect(cachePanel.getByRole('button',{name:'清理旧解析缓存',exact:true})).toBeEnabled();
     expect(actions.filter(x=>x.action==='clean-analysis-cache')).toHaveLength(0);
     await cachePanel.getByRole('button',{name:'清理旧解析缓存',exact:true}).click();
@@ -84,6 +87,7 @@ const server=http.createServer((req,res)=>{
     const mobile=await browser.newPage({viewport:{width:390,height:1000}});
     await prepare(mobile);
     await expect(mobile.getByLabel('历史文件手动清理')).toContainText('120.0 MB');
+    await mobile.goto(`http://127.0.0.1:${server.address().port}/#analysis`);
     await expect(mobile.getByLabel('旧解析缓存清理')).toContainText('校验清理已完成');
     expect(await mobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
     await mobile.screenshot({path:path.join(screenshots,'mobile-completed.png'),fullPage:true});
@@ -91,4 +95,4 @@ const server=http.createServer((req,res)=>{
     expect(errors).toEqual([]);
     console.log(JSON.stringify({passed:true,flow:'sync -> manual cleanup -> progress -> safe stop -> completion',viewports:[1440,390],browser:'Browser plugin not available; Playwright/msedge',screenshots,actions}));
   }finally{await browser.close();await new Promise(resolve=>server.close(resolve))}
-})().catch(error=>{console.error(error);process.exitCode=1});
+})().catch(error=>{console.error(error);server.close();process.exitCode=1});

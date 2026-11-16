@@ -11,12 +11,7 @@ import logging
 import re
 
 
-def redact(value):
-    pattern = r'''(?i)((?:["']?(?:password|api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|secret)["']?)\s*[:=]\s*)("[^"\r\n]*"|'[^'\r\n]*'|Bearer\s+[^\s,;}]+|[^\s,;}&]+)'''
-    def replace(match):
-        hidden = '"[已隐藏]"' if match[2].startswith('"') else "'[已隐藏]'" if match[2].startswith("'") else '[已隐藏]'
-        return match[1]+hidden
-    return re.sub(pattern,replace,str(value))
+from shared_services.log_policy import redact
 
 
 def captured_line(path, text, at, max_bytes=5*1024*1024, backups=4):
@@ -69,11 +64,11 @@ def normalize_logs(root=None):
     from manager import decode_text
     root=Path(root or HOME.parent).resolve()
     admin=root/'管理中心'
-    candidates=set((admin/'runtime').glob('*.log'))
-    for folder in ('FusionLive同步工具','绿联云上传工具','codex-wechat'):
-        base=root/folder
-        candidates.update((base/'logs').rglob('*.log'))
-        candidates.update((base/'runtime').glob('*.log'))
+    candidates=set(log_files(admin/'runtime')) | set(log_files(root/'logs', True))
+    for folder in ('FusionLive同步工具','资料解析及管理工具','绿联云上传工具','Ima知识库管理','codex-wechat'):
+        base=root/'tools'/folder
+        candidates.update(log_files(base/'logs', True))
+        candidates.update(log_files(base/'runtime'))
         if folder=='FusionLive同步工具':candidates.update((base/'runtime/file_analysis').glob('*.log'))
     backup=admin/'runtime/log-encoding-backups'/datetime.now().strftime('%Y%m%d-%H%M%S-%f')
     report={'converted':[],'skipped':[],'encoding':'UTF-8 without BOM'}
@@ -113,11 +108,11 @@ def normalize_logs(root=None):
 
 
 def run_tests(tool='manager',log=None,*,full=False):
-    folder=HOME if tool=='manager' else HOME.parent/'FusionLive同步工具'
+    folder=HOME if tool=='manager' else HOME.parent/'tools' / 'FusionLive同步工具'
     output=Path(log) if log else folder/'runtime'/'tests-utf8.log'
     output.parent.mkdir(parents=True,exist_ok=True)
     env={**os.environ,'PYTHONUTF8':'1','PYTHONIOENCODING':'utf-8','PYTHONUNBUFFERED':'1'}
-    command=[sys.executable,str(HOME.parent/'tools/run_tests.py'),'--component',tool]
+    command=[sys.executable,str(HOME/'tools/run_tests.py'),'--component',tool]
     if full:command.append('--full')
     with output.open('w',encoding='utf-8',newline='') as target:
         child=subprocess.Popen(command,cwd=folder,env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,

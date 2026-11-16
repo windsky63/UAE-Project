@@ -5,7 +5,7 @@ import '@mdi/font/css/materialdesignicons.css'
 import { createVuetify } from 'vuetify'
 import {
   VApp, VMain, VContainer, VRow, VCol, VAvatar, VIcon, VChip, VCard, VCardActions,
-  VBtn, VForm, VTextField, VTextarea, VSelect, VSnackbar, VNavigationDrawer, VCardItem, VCardText,
+  VBtn, VForm, VTextField, VTextarea, VSelect, VAutocomplete, VSnackbar, VNavigationDrawer, VCardItem, VCardText,
   VDivider, VList, VListItem, VAppBar, VAppBarNavIcon, VAppBarTitle, VTable,
   VSpacer, VDialog, VMenu, VTooltip, VProgressLinear, VExpansionPanels, VExpansionPanel,
   VExpansionPanelText, VProgressCircular, VSwitch, VCombobox, VCheckbox, VAlert, VTimePicker,
@@ -17,7 +17,7 @@ import './style.css'
 const vuetify = createVuetify({
   components: {
     VApp, VMain, VContainer, VRow, VCol, VAvatar, VIcon, VChip, VCard, VCardActions,
-    VBtn, VForm, VTextField, VTextarea, VSelect, VSnackbar, VNavigationDrawer, VCardItem, VCardText,
+    VBtn, VForm, VTextField, VTextarea, VSelect, VAutocomplete, VSnackbar, VNavigationDrawer, VCardItem, VCardText,
     VDivider, VList, VListItem, VAppBar, VAppBarNavIcon, VAppBarTitle, VTable,
     VSpacer, VDialog, VMenu, VTooltip, VProgressLinear, VExpansionPanels, VExpansionPanel,
     VExpansionPanelText, VProgressCircular, VSwitch, VCombobox, VCheckbox, VAlert, VTimePicker,
@@ -38,8 +38,9 @@ const vuetify = createVuetify({
     VTextField: { variant: 'outlined', density: 'comfortable', hideDetails: 'auto', color: 'primary' },
     VTextarea: { variant: 'outlined', hideDetails: 'auto', color: 'primary' },
     VSelect: { variant: 'outlined', density: 'comfortable', hideDetails: 'auto', color: 'primary' },
+    VAutocomplete: { variant: 'outlined', density: 'comfortable', hideDetails: 'auto', color: 'primary' },
     VCombobox: { variant: 'outlined', density: 'comfortable', hideDetails: 'auto', color: 'primary' },
-    VTooltip: { openDelay: 150 },
+    VTooltip: { openDelay: 150, zIndex: 2600 },
     VProgressCircular: { size: 20, width: 2 },
     VSwitch: { inset: true, size: 'small', density: 'compact', hideDetails: true, color: 'primary', trueIcon: 'mdi-check', falseIcon: 'mdi-minus' },
   },

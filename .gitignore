@@ -57,3 +57,6 @@ wechat_local_validation.txt
 接口验证结果*
 文件命名及编码规则（含业务类型）.xlsx
 文件命名编码规则（含业务类型）.xlsx
+
+# Local source backups
+backups/

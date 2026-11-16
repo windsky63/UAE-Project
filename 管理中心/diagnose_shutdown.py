@@ -11,7 +11,7 @@ from manager import locked, tail, clean_log
 
 def diagnose(root):
     root = Path(root).resolve()
-    base = root / 'FusionLive同步工具'
+    base = root / 'tools' / 'FusionLive同步工具'
     runtime = base / 'runtime'
     at = datetime.now(timezone(timedelta(hours=8)))
     locks = [('调度程序', runtime / 'scheduler.lock'), ('下载/注销', runtime / 'sync.lock'),

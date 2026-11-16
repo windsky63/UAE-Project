@@ -53,12 +53,43 @@ class PublicationTests(unittest.TestCase):
             raise ValueError('下载日报尚未就绪，未推送')
         return self.text,dict(self.text_marker)
 
+    def test_manual_drawing_selection_and_journal_status(self):
+        drawing = self.report/'drawing.png'
+        drawing.write_bytes(b'fixture drawing image')
+        drawing_sha = hashlib.sha256(drawing.read_bytes()).hexdigest()
+        self.report_marker['images'].append(dict(path=str(drawing),sha256=drawing_sha,kind='drawing',page=10001))
+        self.write_markers()
+        settings = dict(self.settings, recipients=['drawing-chat'], publish_text=False, publish_briefing=False,
+                        recipient_publications={'drawing-chat':{'publish_drawings':True}})
+        marker, selected = prepare_manual(self.base,self.day,'drawings',settings)
+        self.assertTrue(selected['publish_drawings'])
+        self.assertFalse(selected['publish_text'])
+        self.assertFalse(selected['publish_briefing'])
+        self.journal([('drawing-chat',10001,drawing_sha,'submitted',1,None)])
+        view = snapshot(self.base,self.day,settings)
+        self.assertEqual(view['briefing']['expected'],1)
+        self.assertEqual(view['briefing']['delivery_state'],'submitted')
+
     def write_markers(self):
         (self.folder / '推送状态.json').write_text(json.dumps(self.text_marker), encoding='utf-8')
         (self.folder/'日报快照.json').write_text(json.dumps(dict(self.text_marker,
             snapshot_format='daily-file-snapshot-v1',text=self.text,
             body_sha256=hashlib.sha256(self.text.encode()).hexdigest())),encoding='utf-8')
         (self.report / '简报推送状态.json').write_text(json.dumps(self.report_marker), encoding='utf-8')
+
+    def test_pipeline_and_drawing_cards_have_separate_images_and_delivery_states(self):
+        drawing=self.report/'drawing.png';drawing.write_bytes(b'drawing')
+        sha=hashlib.sha256(drawing.read_bytes()).hexdigest()
+        self.report_marker['images'].append(dict(path=str(drawing),sha256=sha,kind='drawing',page=10001))
+        self.write_markers()
+        pipeline_sha=self.report_marker['images'][0]['sha256']
+        settings=dict(self.settings,recipients=['report-chat'],publish_drawings=True,
+                      recipient_publications={'report-chat':dict(publish_text=False,publish_briefing=True,publish_drawings=True)})
+        self.journal([('report-chat',1,pipeline_sha,'submitted',1,None),('report-chat',10001,sha,'uncertain',1,'check')])
+        view=snapshot(self.base,self.day,settings)
+        self.assertEqual(len(view['pipeline']['images']),1);self.assertEqual(len(view['drawings']['images']),1)
+        self.assertEqual(view['pipeline']['delivery_state'],'submitted')
+        self.assertEqual(view['drawings']['delivery_state'],'uncertain')
 
     def journal(self, rows):
         path = self.base / 'runtime/wechat_delivery/deliveries.sqlite3'

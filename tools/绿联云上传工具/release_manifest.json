@@ -1,0 +1,99 @@
+{
+  "format": 1,
+  "release": "2026.11.10-nas-manual-ledger-interval.1",
+  "generated_at_beijing": "2026-11-11T10:40:36.209650+08:00",
+  "editable_files": [
+    "config.json"
+  ],
+  "files": {
+    "config.example.json": {
+      "sha256": "993c74714bea109de6a8b02211e85949dc31a4b9e3cbab01cd765c1d7ce91b5e",
+      "bytes": 590
+    },
+    "log_policy.py": {
+      "sha256": "fe4a0b834bf55ef521cbb00afc9ae2166920c251f8d2ccab86932f60d8f7ceba",
+      "bytes": 11971
+    },
+    "main.py": {
+      "sha256": "3bf87080a247a8eab1955aca625617ace553ecb8bf45e2d387e501ed93b6dba6",
+      "bytes": 40528
+    },
+    "nas_history.py": {
+      "sha256": "42f53cfcdc284a8bc0f2fc000d19f11cf72f6fb250a2ac6d78a64c1935dc99be",
+      "bytes": 9838
+    },
+    "nas_remote_hash.py": {
+      "sha256": "7ae6f1ce04e7dc4baad687830a98d32fa7e3ee2a2622e3ba6e9e190ff771d038",
+      "bytes": 27980
+    },
+    "nas_sync.py": {
+      "sha256": "5dc58540f82646e7df1916048b9a476db037f9750588c5ee8b641cc5d6ebd1e4",
+      "bytes": 106078
+    },
+    "pytest.ini": {
+      "sha256": "16d061d75569a903b3052cdf91323b23ec5dd97ec8b7bf7398fd960ecefec0c0",
+      "bytes": 159
+    },
+    "README.md": {
+      "sha256": "68c7f93c14ce57f50cc7f84d7429a02028fc7fa2cf92a9f7310430846e9bd3c9",
+      "bytes": 6151
+    },
+    "requirements.txt": {
+      "sha256": "91ca20a9f9344a1361d59bf4ca8c85526033bf43d70a238375b184ff1acc3d82",
+      "bytes": 97
+    },
+    "setup_nas_ssh.py": {
+      "sha256": "9ac0701dbc3921bac51435f3456615763377fae7aeab7e75af57854f4c50b290",
+      "bytes": 9876
+    },
+    "test_managed_pipeline.py": {
+      "sha256": "10549d0503fd829a71ffdefd0e3ed3517c487b06d954724a45549b5105375d8f",
+      "bytes": 1600
+    },
+    "test_nas_history.py": {
+      "sha256": "098173e9d5deb8deedca875b69409e09f18474ca0b6354498a6f58edb1916d88",
+      "bytes": 10346
+    },
+    "test_remote_hash.py": {
+      "sha256": "3cecd3d13c8a074ae7e2ae5d52fe02eaa86547d6f4d605f38a438033f008f43d",
+      "bytes": 23302
+    },
+    "test_upload.py": {
+      "sha256": "64a899cb108225e03aacacb36ee81f25d8ddf52d2c265ab498011644dc314838",
+      "bytes": 116586
+    },
+    "使用说明.txt": {
+      "sha256": "535fd7c0357a162bb16e3964603a8b8a3248c125dc8b339ce5195582f287f710",
+      "bytes": 36958
+    },
+    "单文件上传测试.cmd": {
+      "sha256": "aac5cde1b546c2387b1af92550af9af31477d6049c5602a2e26d08625ec9f636",
+      "bytes": 239
+    },
+    "启动每日上传.cmd": {
+      "sha256": "ec47653211a6706732f53348530961e732915bd23f1db569cfb4ade0c71a03be",
+      "bytes": 236
+    },
+    "安全退出.cmd": {
+      "sha256": "8c0f7fd3fa591684381a52be8574e2e82fdbae827f07e358e3ef6075e7c07a88",
+      "bytes": 232
+    },
+    "检查程序完整性.cmd": {
+      "sha256": "3cc4ede0f49e41d59b95433e417213aa211794377a6b2a51411d29657b9401a6",
+      "bytes": 237
+    },
+    "检查连接与清单.cmd": {
+      "sha256": "3af48acd368c573391561bcb026b4925fc84c1f8323d105fead474880873793d",
+      "bytes": 233
+    },
+    "配置NAS本机校验.cmd": {
+      "sha256": "ebe0655127424a5ef994383dfe12e512ab401a114275a1badaa0de4a0da90f47",
+      "bytes": 420
+    }
+  },
+  "patch_release": "2026.11.10-nas-manual-ledger-interval.1",
+  "patch_description": "Configurable minimum Excel-ledger update interval; one-shot manual uploads outside the automatic window, serialized with the resident scheduler.",
+  "patch_generated_at_beijing": "2026-11-10T08:29:33.472975+08:00",
+  "patch_previous_release": "2026.11.09-nas-root-ledger.1",
+  "deployment_snapshot": "2026.11.16-layout-v1"
+}

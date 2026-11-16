@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import ActionIcon from './ActionIcon.vue'
 const props = defineProps({ total: { type: Number, default: 0 }, page: { type: Number, default: 1 }, size: { type: Number, default: 20 }, loading: Boolean, fixedSize: Boolean, label: { type: String, required: true } })
 const emit = defineEmits(['page', 'size'])
 const last = computed(() => Math.max(1, Math.ceil(props.total / props.size)))
@@ -12,7 +13,7 @@ const pages = computed(() => {
   <nav class="ima-pagination" :aria-label="label + '分页'">
     <div class="ima-page-count" aria-live="polite">共 {{ total }} 项<span v-if="total"> · 第 {{ (page - 1) * size + 1 }}–{{ Math.min(page * size, total) }} 项</span></div>
     <label v-if="!fixedSize" class="ima-page-size">每页 <select :aria-label="label + '每页条数'" :value="size" :disabled="loading" @change="emit('size', Number($event.target.value))"><option v-for="value in [20, 50, 100]" :key="value" :value="value">{{ value }} 条</option></select></label>
-    <div class="ima-page-buttons"><v-btn variant="text" size="small" :disabled="loading || page <= 1" @click="emit('page', page - 1)">上一页</v-btn><template v-for="value in pages" :key="value"><span v-if="typeof value === 'string'">…</span><v-btn v-else :variant="value === page ? 'flat' : 'text'" :color="value === page ? 'primary' : undefined" size="small" :disabled="loading" :aria-label="label + '第' + value + '页'" :aria-current="value === page ? 'page' : undefined" @click="emit('page', value)">{{ value }}</v-btn></template><v-btn variant="text" size="small" :disabled="loading || page >= last" @click="emit('page', page + 1)">下一页</v-btn></div>
+    <div class="ima-page-buttons"><v-btn variant="text" size="small" :disabled="loading || page <= 1" @click="emit('page', page - 1)">上一页</v-btn><template v-for="value in pages" :key="value"><span v-if="typeof value === 'string'">…</span><v-btn v-else :variant="value === page ? 'flat' : 'text'" :color="value === page ? 'primary' : undefined" size="small" :disabled="loading" :aria-label="label + '第' + value + '页'" :aria-current="value === page ? 'page' : undefined" @click="emit('page', value)">{{ value }}</v-btn></template><ActionIcon :disabled="loading || page >= last" @click="emit('page', page + 1)" label="下一页" icon="mdi-chevron-right"/></div>
   </nav>
 </template>
 <style scoped>

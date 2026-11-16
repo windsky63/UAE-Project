@@ -2,6 +2,7 @@ from http.cookiejar import CookieJar
 from contextlib import closing
 from http.server import ThreadingHTTPServer
 import json
+import io
 import sqlite3
 from pathlib import Path
 import subprocess
@@ -25,6 +26,7 @@ class ImaControlTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         self.manager = Manager(self.root, self.root / 'admin-runtime')
+        self.addCleanup(self.manager.tasks)  # Join finished fixture log readers before removing their directory.
         self.base = self.manager.folder('ima')
         (self.base / 'runtime').mkdir(parents=True)
 
@@ -105,9 +107,25 @@ class ImaControlTests(unittest.TestCase):
         with patch.object(self.manager, 'python', return_value=sys.executable), \
              patch('subprocess.Popen') as launch:
             launch.return_value.pid = 12345
+            launch.return_value.poll.return_value = 0
+            launch.return_value.stdout = io.BytesIO()
             result = self.manager.action('ima', 'sync-once')
         self.assertEqual(result['state'], 'running')
-        self.assertEqual(launch.call_args.args[0][-2:], ['sync', '--execute'])
+        self.assertEqual(launch.call_args.args[0][-3:], ['sync', '--execute', '--summary'])
+
+    def test_manual_sync_passes_reviewed_plan_id_and_rejects_invalid_ids(self):
+        with patch.object(self.manager, 'python', return_value=sys.executable), \
+             patch('subprocess.Popen') as launch:
+            launch.return_value.pid = 12345
+            launch.return_value.poll.return_value = 0
+            launch.return_value.stdout = io.BytesIO()
+            self.manager.action('ima', 'sync-once', plan_id='a' * 32)
+            self.assertEqual(launch.call_args.args[0][-2:], ['--plan-id', 'a' * 32])
+        with patch('subprocess.Popen') as launch:
+            for invalid in ('', '../other', 'a' * 33, 123):
+                with self.assertRaisesRegex(ValueError, '计划 ID 无效'):
+                    self.manager.action('ima', 'sync-once', plan_id=invalid)
+            launch.assert_not_called()
 
     def test_portable_credentials_are_reported_ready_without_exposing_or_consuming_them(self):
         path = self.base / 'credentials.bootstrap.json'
@@ -125,7 +143,7 @@ class ImaControlTests(unittest.TestCase):
                 self.assertEqual(cwd, self.base)
                 self.assertEqual(command[2:4], ['-m', 'ima_manager'])
                 self.assertNotIn('gui', command)
-            self.assertEqual(self.manager.command('ima', 'start')[0][-2:], ['watch', '--execute'])
+            self.assertEqual(self.manager.command('ima', 'start')[0][-3:], ['watch', '--execute', '--summary'])
             with self.assertRaises(ValueError):
                 self.manager.command('ima', 'delete-all')
 
@@ -259,6 +277,13 @@ class ImaControlTests(unittest.TestCase):
                 with opener.open(request) as response:
                     self.assertEqual(json.load(response), {'items': []})
                 query.assert_called_once_with(self.manager, 'scan', {})
+            with patch.object(self.manager, 'action', return_value={'state': 'running'}) as action:
+                payload = json.dumps({'tool': 'ima', 'action': 'sync-once', 'plan_id': 'b' * 32}).encode()
+                request = urllib.request.Request(url + '/api/action', data=payload,
+                    headers={'X-Admin-Request': '1', 'Content-Type': 'application/json'}, method='POST')
+                with opener.open(request) as response:
+                    self.assertEqual(json.load(response), {'state': 'running'})
+                action.assert_called_once_with('ima', 'sync-once', plan_id='b' * 32)
         finally:
             server.shutdown()
             server.server_close()

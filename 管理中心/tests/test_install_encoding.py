@@ -8,7 +8,7 @@ import sys
 import unittest
 
 ROOT=Path(__file__).resolve().parents[2]
-spec=importlib.util.spec_from_file_location('project_install',ROOT/'setup_python312.py')
+spec=importlib.util.spec_from_file_location('project_install',ROOT/'管理中心/tools/install_dependencies.py')
 installer=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(installer)
 
@@ -18,8 +18,8 @@ class InstallEncodingTests(unittest.TestCase):
         code=('import json,sys; from pathlib import Path; '
               'print(json.dumps(dict(utf8=sys.flags.utf8_mode, '
               'content=Path(sys.argv[1]).read_text()),ensure_ascii=True))')
-        result=subprocess.run(installer.isolated_python(sys.executable,'-c',code,str(ROOT/'requirements.txt')),
+        result=subprocess.run(installer.isolated_python(sys.executable,'-c',code,str(ROOT/'管理中心/tools/requirements.txt')),
             env={**os.environ,'PYTHONUTF8':'0'},capture_output=True,text=True,encoding='utf-8',check=True)
         payload=json.loads(result.stdout)
         self.assertEqual(payload['utf8'],1)
-        self.assertEqual(payload['content'],(ROOT/'requirements.txt').read_text(encoding='utf-8'))
+        self.assertEqual(payload['content'],(ROOT/'管理中心/tools/requirements.txt').read_text(encoding='utf-8'))

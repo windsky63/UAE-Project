@@ -1,4 +1,5 @@
 <script setup>
+import ActionIcon from './ActionIcon.vue'
 import HelpTip from './HelpTip.vue'
 import LogClearButton from './LogClearButton.vue'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
@@ -55,14 +56,14 @@ onUnmounted(() => { request++; clearInterval(timer); clearTimeout(debounce) })
       <div class="flex-grow-1"><div class="section-title"><h2 class="text-h6">运行日志</h2><HelpTip label="运行日志说明" text="查看同步、上传、微信监听及管理中心发起的任务输出。每5秒刷新首页，读取最新日志的尾部，不扫描完整历史。" /></div></div>
       <v-switch v-model="automatic" label="自动刷新" color="primary" hide-details density="compact" />
       <v-switch v-model="compact" label="合并进度" color="primary" hide-details density="compact" />
-      <v-btn prepend-icon="mdi-refresh" variant="tonal" :loading="loading" @click="load">刷新日志</v-btn>
-      <LogClearButton :api="api" :tool="tool" @notice="message => emit('notice', message)" @cleared="logsCleared" />
+      <ActionIcon :loading="loading" @click="load" label="刷新日志" icon="mdi-refresh"/>
+      <LogClearButton :api="api" :tool="tool" @notice="(...args) => emit('notice', ...args)" @cleared="logsCleared" />
     </div>
-    <v-row class="px-5" dense>
-      <v-col cols="12" sm="3"><v-select v-model="tool" :items="[{title:'全部工具',value:''},{title:'FusionLive 同步',value:'sync'},{title:'绿联云上传',value:'nas'},{title:'微信与 Codex',value:'wechat'},{title:'ima 知识库',value:'ima'}]" label="工具" hide-details /></v-col>
-      <v-col cols="12" sm="3"><v-select v-model="level" :items="levels" label="日志级别" hide-details /></v-col>
-      <v-col cols="12" sm="6"><v-text-field v-model="search" label="搜索日志" placeholder="文件名、任务、错误…" prepend-inner-icon="mdi-magnify" clearable @click:clear="search = ''" hide-details /></v-col>
-    </v-row>
+    <div class="log-filters">
+      <v-select v-model="tool" :items="[{title:'全部工具',value:''},{title:'FusionLive 同步',value:'sync'},{title:'资料解析及管理工具',value:'analysis'},{title:'绿联云上传',value:'nas'},{title:'微信与 Codex',value:'wechat'},{title:'ima 知识库',value:'ima'}]" label="工具" hide-details />
+      <v-select v-model="level" :items="levels" label="日志级别" hide-details />
+      <v-text-field v-model="search" label="搜索日志" placeholder="文件名、任务、错误…" prepend-inner-icon="mdi-magnify" clearable @click:clear="search = ''" hide-details />
+    </div>
 
     <v-alert v-if="clearResult" type="info" variant="tonal" class="mx-5 my-4" closable @click:close="clearResult = ''">{{ clearResult }}</v-alert>
     <v-alert v-if="failure" type="error" variant="tonal" class="mx-5 mb-4">{{ failure }}</v-alert>
@@ -74,7 +75,8 @@ onUnmounted(() => { request++; clearInterval(timer); clearTimeout(debounce) })
           <time class="text-caption">{{ new Date(item.created_at).toLocaleString('zh-CN', { hour12: false, timeZone:'Asia/Shanghai' }) }}</time>
           <span class="text-caption text-secondary" :title="item.duplicate_sources?.join('\n')">{{ item.source }}</span>
         </div>
-        <p class="log-text text-body-2">{{ item.message }}</p>
+        <p class="log-text text-body-2">{{ item.summary || item.message }}</p>
+        <details v-if="item.diagnostic" class="mt-3"><summary class="text-body-2">查看完整诊断</summary><pre class="log-details mt-2 pa-3">{{ item.diagnostic }}</pre></details>
         <div v-if="item.progress" class="mt-3" data-testid="log-progress">
           <v-progress-linear :model-value="item.progress.total>0?Math.min(100,100*item.progress.current/item.progress.total):0" :indeterminate="false" color="primary" height="8" rounded :aria-label="item.progress.phase+'进度'" />
           <div class="text-caption text-secondary mt-1">{{ item.progress.phase }} · {{ item.progress.total>0?`${item.progress.current} / ${item.progress.total}`:'未提供总量，显示最近进度记录' }} · 本次读取已合并 {{ item.progress.updates }} 条更新</div>
@@ -93,6 +95,9 @@ onUnmounted(() => { request++; clearInterval(timer); clearTimeout(debounce) })
 </template>
 
 <style scoped>
+.log-filters{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,2fr);gap:16px;padding:0 20px 20px}.log-filters>.v-input{min-width:0}
+@media(max-width:700px){.log-filters{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.log-filters>.v-input:last-child{grid-column:1/-1}}
+@media(max-width:400px){.log-filters{grid-template-columns:minmax(0,1fr)}}
 .log-entry + .log-entry { border-top: 1px solid rgba(var(--v-theme-on-surface), .1); }
 .log-text, .log-details { overflow-wrap: anywhere; white-space: pre-wrap; }
 .log-details { background: rgba(var(--v-theme-on-surface), .04); border-radius: 8px; font-size: 12px; }

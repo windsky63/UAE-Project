@@ -12,8 +12,10 @@ import uuid
 from daily_publications import BEIJING, day_value, load_report
 
 
-def run(base, job_id, send=False, *, execute=None, report_loader=load_report):
+def run(base, job_id, send=False, *, execute=None, report_loader=load_report, analysis_home=None):
+    os.environ['PROJECT_MANAGER_HOME'] = str(Path(__file__).resolve().parent)
     base = Path(base).resolve()
+    analysis_home=Path(analysis_home) if analysis_home else Path(__file__).resolve().parents[1]/'tools/资料解析及管理工具'
     if not re.fullmatch(r'[a-f0-9]{32}', job_id):
         raise ValueError('任务ID无效')
     day = day_value()
@@ -45,9 +47,9 @@ def run(base, job_id, send=False, *, execute=None, report_loader=load_report):
         if not (base / 'runtime/ledger.sqlite3').is_file():
             raise ValueError('本机没有下载台账，无法生成最新正式简报')
         state['phase'] = 'analyzing'; save()
-        command([sys.executable, '-u', str(base / 'main.py'), 'analysis_worker'])
+        command([sys.executable, '-u', str(analysis_home/'main.py'), 'analysis_worker', '--data-home', str(base)])
         state['phase'] = 'generating'; save()
-        command([sys.executable, '-u', str(base / 'main.py'), 'briefing', '--date', day])
+        command([sys.executable, '-u', str(analysis_home/'main.py'), 'briefing', '--data-home', str(base), '--date', day])
         marker = report_loader(base, day)
         generated = datetime.fromisoformat(marker['generated_at'])
         if generated < started or marker.get('fallback_notice') or marker.get('demo'):
@@ -81,5 +83,6 @@ if __name__ == '__main__':
     parser.add_argument('--base', type=Path, required=True)
     parser.add_argument('--job-id', required=True)
     parser.add_argument('--send', action='store_true')
+    parser.add_argument('--analysis-home',type=Path)
     args = parser.parse_args()
-    raise SystemExit(run(args.base, args.job_id, args.send))
+    raise SystemExit(run(args.base, args.job_id, args.send, analysis_home=args.analysis_home))

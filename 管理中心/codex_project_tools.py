@@ -68,14 +68,14 @@ class ProjectTools:
                 else:
                     if action == 'generate_and_send':
                         from daily_publications import targets
-                        settings = self.manager.config('sync')['data']
+                        settings = self.manager.config('analysis')['data']
                         if not settings.get('enabled', True) or not targets(settings, 'briefing'):
                             raise ValueError('尚未配置启用的微信简报接收会话，未启动发送')
                     # Commit reservation before spawning; a crash must never auto-resend.
                     db.execute('INSERT INTO project_actions VALUES(?,?,?,?,?)',
                                (request, session, action, None, 'reserved'))
                     db.commit()
-                    task = self.manager.action('sync', 'briefing-send' if action == 'generate_and_send'
+                    task = self.manager.action('analysis', 'briefing-send' if action == 'generate_and_send'
                                                else 'briefing-latest')['id']
                     db.execute('UPDATE project_actions SET task=?,state=? WHERE request=?', (task, 'started', request))
         deadline = time.monotonic() + wait_seconds

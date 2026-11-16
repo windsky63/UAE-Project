@@ -4,16 +4,30 @@ import ActionIcon from './ActionIcon.vue'
 import HelpTip from './HelpTip.vue'
 import TimePickerField from './TimePickerField.vue'
 import NasHashSettings from './NasHashSettings.vue'
+import DrawingFileDeliveryPanel from './DrawingFileDeliveryPanel.vue'
+import DrawingScopeSettings from './DrawingScopeSettings.vue'
+import ValueListField from './ValueListField.vue'
 const props=defineProps({tool:String,api:Function})
 const emit=defineEmits(['notice'])
 const firstSetup=ref(false)
+const drawingScope=ref(null)
 const discoveredAccessDirs=ref([])
 const data=ref(null), revision=ref(''), busy=ref(false), failure=ref(''), chatEdit=ref(null), editIndex=ref(-1)
 const sourceIds=computed(()=>data.value?.sync_sources?.map(s=>s.id)||[])
-const titles={sync:'下载与简报设置',nas:'上传设置',wechat:'微信与 Codex 设置'}
-function inheritTimes(){if(props.tool==='sync'&&data.value){data.value.text_send_time_beijing??=data.value.send_time_beijing;data.value.briefing_send_time_beijing??=data.value.send_time_beijing}}
+const titles={sync:'下载设置',analysis:'资料解析及管理设置',nas:'上传设置',wechat:'微信与 Codex 设置'}
+function inheritTimes(){if(props.tool==='analysis'&&data.value){data.value.text_send_time_beijing??=data.value.send_time_beijing;data.value.briefing_send_time_beijing??=data.value.send_time_beijing;data.value.unit_text_send_time_beijing??=data.value.send_time_beijing}}
 async function load(){busy.value=true;try{const result=await props.api('/config?tool='+props.tool);data.value=result.data;inheritTimes();discoveredAccessDirs.value=result.discovered_access_dirs||[];revision.value=result.revision;firstSetup.value=props.tool==='wechat'&&result.exists===false;failure.value=''}catch(e){failure.value=e.message}finally{busy.value=false}}
-async function save(){busy.value=true;try{const result=await props.api('/config',{method:'POST',body:JSON.stringify({tool:props.tool,data:data.value,revision:revision.value})});data.value=result.data;inheritTimes();revision.value=result.revision;firstSetup.value=false;failure.value='';emit('notice',props.tool==='sync'?'配置已保存；推送时间由常驻调度自动读取，其他运行设置需安全重启。':'配置已保存；运行中的工具需安全停止后重新启动。');return true}catch(e){failure.value=e.message;emit('notice',e.message,true);return false}finally{busy.value=false}}
+async function save(){busy.value=true;try{const result=await props.api('/config',{method:'POST',body:JSON.stringify({tool:props.tool,data:data.value,revision:revision.value})});data.value=result.data;inheritTimes();revision.value=result.revision;firstSetup.value=false;failure.value='';emit('notice',props.tool==='analysis'?'配置已保存；推送时间由常驻调度自动读取，其他运行设置需安全重启。':'配置已保存；运行中的工具需安全停止后重新启动。');return true}catch(e){failure.value=e.message;emit('notice',e.message,true);return false}finally{busy.value=false}}
+function updateRecipients(next){
+  const previous=data.value.recipients||[]
+  const removed=previous.filter(value=>!next.includes(value)), added=next.filter(value=>!previous.includes(value))
+  const publications=data.value.recipient_publications
+  if(publications){
+    if(removed.length===1&&added.length===1&&previous.length===next.length&&publications[removed[0]])publications[added[0]]=publications[removed[0]]
+    for(const value of removed)delete publications[value]
+  }
+  data.value.recipients=next
+}
 function editChat(chat,index){editIndex.value=index;chatEdit.value=chat?JSON.parse(JSON.stringify(chat)):{id:'chat-'+Date.now(),name:'',username:'',kind:'group',reply:false,persona:'用简洁、准确的中文回复。',sync_sources:[]}}
 function commitChat(){if(!chatEdit.value.id.trim()||!chatEdit.value.name.trim())return;if(editIndex.value<0)data.value.chats.push(chatEdit.value);else data.value.chats[editIndex.value]=chatEdit.value;chatEdit.value=null}
 function adjustPrewarm(value){if(value===''||value==null)return;const ratio=Number(value);if(!Number.isFinite(ratio))return;if(ratio<=1){data.value.codex_session_prewarm=false;return}if(Number(data.value.codex_session_prewarm_percent)>=ratio)data.value.codex_session_prewarm_percent=Math.max(1,ratio-15)}
@@ -26,31 +40,41 @@ onMounted(load)
   <v-alert v-if="firstSetup" type="info" variant="tonal" class="mb-5">首次使用已载入默认数据库目录与账号，默认开启 Codex 回复及微信发送。未配置会话时可启动并保持待配置状态；配置会话后保存并重启监听。</v-alert>
   <v-progress-linear v-if="busy&&!data" indeterminate color="primary"/>
   <div v-if="data" class="settings-grid">
+    <div class="settings-main">
+    <DrawingScopeSettings v-if="tool==='analysis'" :api="api" @scope="drawingScope=$event" @notice="(...args)=>emit('notice',...args)"/>
     <v-card class="settings-section">
-      <h2 class="mb-1">{{titles[tool]}}</h2><p class="section-subtitle mb-6">直接使用工具现有配置文件，保存前校验内容。</p>
+      <h2 class="mb-1">{{titles[tool]}}</h2><p class="section-subtitle mb-6">{{tool==='sync'?'查看下载调度与推送文生成规则。':'直接使用工具现有配置文件，保存前校验内容。'}}</p>
       <div v-if="tool==='sync'" class="settings-form">
-        <div><h3 class="text-body-2 mb-2">后台解析</h3><p class="text-caption text-secondary">保存后安全停止并重新启动后台解析以应用。时间单位均为秒；空闲退出设为 0 表示持续等待。</p></div>
+        <div class="settings-pair"><v-text-field :model-value="data.download_start_time_beijing" label="下载开始时间（北京）" readonly/><v-text-field :model-value="data.download_end_time_beijing" label="下载结束时间（北京）" readonly/></div>
+        <v-alert type="info" variant="tonal">下载时段固定为每天 02:00—10:30。每轮下载成功收尾后自动生成一次推送文；无新增下载时不重复生成已有快照。</v-alert>
+        <p class="text-body-2">解析、管道及图纸简报、微信发布和图纸文件发送，请在“资料解析及管理工具 → 配置设置”中配置。</p>
+      </div>
+      <div v-else-if="tool==='analysis'" class="settings-form">
+        <div><h3 class="text-body-2 mb-2">后台解析</h3><p class="text-caption text-secondary">自动解析空闲时持续等待，按新文件扫描间隔发现任务。保存后安全停止并重新启动后台解析以应用。时间单位均为秒。</p></div>
         <div class="settings-pair"><v-text-field v-model.number="data.analysis_poll_seconds" label="新文件扫描间隔" type="number" min="0.1" max="86400" step="1" suffix="秒"/><v-text-field v-model.number="data.analysis_idle_log_seconds" label="空闲状态提示间隔" type="number" min="0.1" max="86400" step="1" suffix="秒"/></div>
-        <div class="settings-pair"><v-text-field v-model.number="data.analysis_idle_exit_seconds" label="手动启动空闲退出时间" type="number" min="0" max="86400" suffix="秒"/><v-text-field v-model.number="data.analysis_auto_idle_exit_seconds" label="自动启动空闲退出时间" type="number" min="0" max="86400" suffix="秒"/></div>
-        <v-alert type="info" variant="tonal" density="compact">PCF 预制／安装分类使用设备连接坐标算法及 260818 预制率规则，保留命中规则编号；原 PCF 位置标记不再作为分类结果。</v-alert>
+        <v-text-field v-model.number="data.analysis_idle_exit_seconds" label="手动启动空闲退出时间（0 为持续等待）" type="number" min="0" max="86400" suffix="秒"/>
         <v-divider/>
         <v-text-field v-model="data.briefing_title" label="管道简报标题" maxlength="100"/>
+        <div class="settings-pair"><TimePickerField v-model="data.publication_start_time_beijing" label="发布保护开始时间（北京）" :disabled="busy"/><TimePickerField v-model="data.publication_end_time_beijing" label="发布保护结束时间（北京）" :disabled="busy"/></div>
+        <p class="text-caption text-secondary">保护时段内暂停新解析，优先生成和发送推送文、简报。留空时按生成与发送时间自动计算。下载结束或中断并释放锁后，保护时段外即可解析；正在解析的文件完成后安全暂停。</p>
         <TimePickerField v-model="data.prepare_time_beijing" label="简报生成时间（北京）" :disabled="busy"/>
         <div class="settings-pair"><TimePickerField v-model="data.text_send_time_beijing" label="推送文发送时间（北京）" :disabled="busy"/><TimePickerField v-model="data.briefing_send_time_beijing" label="管道简报发送时间（北京）" :disabled="busy"/></div>
-        <p class="text-caption text-secondary">生成开始时间须早于管道简报发送时间。日报快照按生成时间产生；文字提前发送时在发送前生成。前端与发送读取同一快照，当天已提交或结果待核对的内容不因改时间自动重发。</p>
-        <v-combobox v-model="data.recipients" label="推送会话" placeholder="输入完整会话名称后回车" multiple chips closable-chips/>
+        <TimePickerField v-model="data.unit_text_send_time_beijing" label="单元资料推送文发送时间（北京）" :disabled="busy"/><p class="text-caption text-secondary">生成开始时间须早于管道简报发送时间。推送文由同步工具在下载完成后生成，此处只设置发布；当天已提交或结果待核对的内容不因改时间自动重发。</p>
+        <ValueListField :model-value="data.recipients" @update:model-value="updateRecipients" label="推送会话" hint="使用微信中的完整会话名称；每个会话可独立选择推送内容。" :disabled="busy"><template #item="{value:recipient}"><div class="d-flex flex-wrap ga-3 mt-2"><v-checkbox :model-value="data.recipient_publications?.[recipient]?.publish_text??true" label="文字" hide-details density="compact" @update:model-value="value=>{data.recipient_publications??={};data.recipient_publications[recipient]??={};data.recipient_publications[recipient].publish_text=value}"/><v-checkbox :model-value="data.recipient_publications?.[recipient]?.publish_briefing??true" label="管道简报" hide-details density="compact" @update:model-value="value=>{data.recipient_publications??={};data.recipient_publications[recipient]??={};data.recipient_publications[recipient].publish_briefing=value}"/><v-checkbox :model-value="data.recipient_publications?.[recipient]?.publish_drawings??false" label="图纸简报" hide-details density="compact" @update:model-value="value=>{data.recipient_publications??={};data.recipient_publications[recipient]??={};data.recipient_publications[recipient].publish_drawings=value}"/><v-checkbox :model-value="data.recipient_publications?.[recipient]?.publish_unit_text??false" label="单元资料推送文" hide-details density="compact" @update:model-value="value=>{data.recipient_publications??={};data.recipient_publications[recipient]??={};data.recipient_publications[recipient].publish_unit_text=value}"/></div></template></ValueListField>
         <div class="switch-line"><div><strong>推送文字日报</strong><p>按已保存的会话名单发布每日下载情况。</p></div><v-switch v-model="data.publish_text" aria-label="推送文字日报"/></div>
-        <div class="switch-line"><div><strong>推送简报图片</strong><p>发布主表截图，详细数据保留在 Excel 中。</p></div><v-switch v-model="data.publish_briefing" aria-label="推送简报图片"/></div>
-        <div v-if="data.recipients.length" class="source-editor"><h3 class="text-body-2 mb-3">会话独立发布设置</h3><div v-for="recipient in data.recipients" :key="recipient" class="d-flex flex-wrap align-center ga-3 mb-3"><span class="flex-grow-1 text-body-2">{{recipient}}</span><v-checkbox :model-value="data.recipient_publications?.[recipient]?.publish_text??true" label="文字" hide-details density="compact" @update:model-value="value=>{data.recipient_publications??={};data.recipient_publications[recipient]??={};data.recipient_publications[recipient].publish_text=value}"/><v-checkbox :model-value="data.recipient_publications?.[recipient]?.publish_briefing??true" label="简报" hide-details density="compact" @update:model-value="value=>{data.recipient_publications??={};data.recipient_publications[recipient]??={};data.recipient_publications[recipient].publish_briefing=value}"/></div></div>
-        <v-text-field v-model="data.test_recipient" label="手动推送测试对象"/><p class="text-caption text-secondary">下载时段为每天 02:00—10:30；PCF 预制／安装分类使用内置算法规则。</p>
+        <div class="switch-line"><div><strong>推送管道简报图片</strong><p>各会话独立选择管道简报及图纸简报，两类图片共用简报发送时间。</p></div><v-switch v-model="data.publish_briefing" aria-label="推送管道简报图片"/></div>
+        <div class="switch-line"><div><strong>推送图纸简报图片</strong><p>需同时勾选对应会话的图纸简报选项；未设置的会话默认不发送。</p></div><v-switch v-model="data.publish_drawings" aria-label="推送图纸简报图片"/></div>
+
+        <v-text-field v-model="data.test_recipient" label="手动推送测试对象"/>
       </div>
       <div v-else-if="tool==='nas'" class="settings-form">
         <v-text-field v-model="data.source_root" label="本地源目录" hint="相对于绿联云上传工具目录" persistent-hint/>
         <v-text-field v-model="data.download_ledger" label="同步工具下载台账"/>
+        <v-text-field v-model.number="data.ledger_update_interval_minutes" label="文件台账最短更新间隔" type="number" min="60" max="10080" suffix="分钟" hint="默认60分钟，最多10080分钟。手动上传也遵守；保存后需重启正在运行的上传调度。" persistent-hint/>
         <v-text-field v-model="data.target_root" label="NAS 目标共享目录" placeholder="\\NAS\共享目录\阿联酋项目" hint="使用 SMB 共享路径。请先用运行管理中心的 Windows 用户在资源管理器登录该共享，并确认有写入权限。" persistent-hint/>
         <div class="settings-pair"><v-text-field v-model.number="data.retry_attempts" label="失败重试次数" type="number" min="1" max="5"/><v-select v-model="data.chunk_bytes" :items="[{title:'256 KiB',value:262144},{title:'1 MiB',value:1048576},{title:'4 MiB',value:4194304},{title:'8 MiB',value:8388608}]" label="传输分块大小"/></div>
         <div class="switch-line"><div><strong>保留历史版本</strong><p>保留原有上传策略中的历史版本。</p></div><v-switch v-model="data.preserve_previous_versions" aria-label="保留历史版本"/></div>
-        <p class="text-caption text-secondary">上传时段固定为每天 12:00—次日 00:00。保存配置不会连接 NAS。</p>
+        <p class="text-caption text-secondary">自动上传时段为每天 12:00—次日 00:00。“上传一次”可在提示确认后于时段外运行。保存配置不会连接 NAS。</p>
         <NasHashSettings v-if="data.remote_hash" :settings="data.remote_hash" :method="data.verification_method" :api="api" :save-config="save" :reload-config="load" @method="value=>{data.verification_method=value;data.remote_hash.enabled=value==='ssh';data.remote_hash.fallback_to_smb=false}" @notice="(...args)=>emit('notice',...args)"/>
       </div>
       <div v-else class="settings-form">
@@ -63,7 +87,7 @@ onMounted(load)
         <div class="settings-divider"/>
         <v-text-field v-model="data.database_root" label="微信数据库根目录"/>
         <div class="settings-pair"><v-text-field v-model="data.database_account" label="数据库账号目录"/><v-text-field v-model="data.account_name" label="微信显示名称"/></div>
-        <v-combobox v-model="data.codex_command" label="Codex 启动参数" multiple chips hint="每项一个参数，保留列表顺序" persistent-hint/>
+        <ValueListField v-model="data.codex_command" label="Codex 启动参数" hint="每项一个参数，按列表顺序执行，可使用箭头调整顺序。" ordered allow-duplicates :disabled="busy"/>
         <v-select v-model="data.codex_backend" label="微信 Codex 后端" aria-label="微信 Codex 后端" :items="[{title:'常驻 App Server（默认）',value:'app-server'},{title:'逐次 CLI（兼容模式）',value:'exec'}]" hint="常驻模式为每个群或私聊复用独立会话，达到设置的上下文比例后轮换；保存后重启微信监听。" persistent-hint/>
         <template v-if="data.codex_backend==='app-server'">
           <v-text-field v-model.number="data.codex_session_rotate_percent" label="上下文轮换比例（%）" type="number" min="1" max="99" hint="默认 70%；达到比例后完成本轮，下一条问题切换到新会话。" persistent-hint @blur="adjustPrewarm(data.codex_session_rotate_percent)"/>
@@ -79,16 +103,18 @@ onMounted(load)
         <v-text-field v-model.number="data.file_send_cleanup_days" label="发送暂存文件清理间隔" aria-label="发送暂存文件清理间隔" type="number" min="0" max="365" suffix="天" hint="默认每 2 天清理一次，同时只清理保留满该天数的 ZIP 和发送副本；0 为关闭。待发送、待续发和结果不明的文件保留，下载原文件不受影响。保存后重启微信监听生效。" persistent-hint/>
         <v-select v-model="data.codex_transport" label="共享 Codex 连接方式" aria-label="共享 Codex 连接方式" :items="[{title:'跟随 Codex 默认',value:'auto'},{title:'尝试 WebSocket',value:'websocket'},{title:'HTTPS 流式（跳过 WebSocket）',value:'https'}]" hint="微信群聊使用此设置；网页会话选择继承共享设置时也使用此设置。" persistent-hint/>
         <div class="switch-line"><div><strong>自动包含同级目录</strong><p>自动发现 codex-wechat 所在位置的同级目录；关闭后可手动增删。</p></div><v-switch v-model="data.codex_auto_access_dirs" aria-label="自动包含同级目录" @update:model-value="value=>{if(value)data.codex_access_dirs=[...discoveredAccessDirs]}"/></div>
-        <v-combobox v-model="data.codex_access_dirs" label="Codex 可访问目录" aria-label="Codex 可访问目录" multiple chips closable-chips :disabled="data.codex_auto_access_dirs" hint="每项一个完整路径，输入后回车；相对路径以 codex-wechat 目录为基准。" persistent-hint/>
+        <ValueListField v-model="data.codex_access_dirs" label="Codex 可访问目录" :disabled="busy||data.codex_auto_access_dirs" :hint="data.codex_auto_access_dirs?'自动发现的目录；关闭自动包含同级目录后可手动编辑。':'每项一个完整路径；相对路径以 codex-wechat 目录为基准。'"/>
         <p class="text-caption text-secondary">网页对话和微信群聊使用同一目录列表；微信群聊只读。保存目录不会修改 Windows 文件夹本身的权限。微信监听需重启应用新配置。</p>
-        <div class="section-toolbar"><h2>监听会话</h2><v-btn variant="tonal" prepend-icon="mdi-plus" @click="editChat(null,-1)">添加会话</v-btn></div>
+        <div class="section-toolbar"><h2>监听会话</h2><ActionIcon @click="editChat(null,-1)" label="添加会话" icon="mdi-plus"/></div>
         <v-table v-if="data.chats.length"><thead><tr><th>会话名称</th><th>类型 / 回复</th><th>项目文件来源</th><th>操作</th></tr></thead><tbody><tr v-for="(chat,index) in data.chats" :key="index"><td><strong>{{chat.name}}</strong><p class="text-caption text-secondary">{{chat.username||'未填写微信原生 ID'}}</p></td><td>{{chat.kind==='group'?'群聊':'私聊'}} · {{chat.reply?'回复开启':'仅记录'}}</td><td>{{chat.sync_sources?.join('、')||'使用共享目录'}}</td><td><ActionIcon :label="'编辑 '+chat.name" icon="mdi-pencil-outline" @click="editChat(chat,index)"/></td></tr></tbody></v-table><p v-else class="text-body-2 text-secondary">尚未配置会话。</p>
-        <div class="section-toolbar"><div class="d-flex align-center ga-2"><h2>项目文件来源</h2><HelpTip text="独立来源可细分台账项目；会话未选择来源时，从共享可访问目录自动发现同步台账。"/></div><v-btn variant="tonal" prepend-icon="mdi-plus" @click="addSource">添加来源</v-btn></div>
-        <div><div v-for="(source,index) in data.sync_sources" :key="index" class="source-editor"><div class="settings-pair mb-4"><v-text-field v-model="source.id" label="来源 ID"/><v-text-field v-model="source.root" label="同步工具目录"/></div><v-combobox v-model="source.projects" label="允许访问的项目 ID" multiple chips closable-chips/><v-btn variant="text" color="error" class="mt-2" @click="removeSource(index)">移除此来源</v-btn></div><p v-if="!data.sync_sources?.length" class="text-body-2 text-secondary">未配置独立来源，将从共享可访问目录自动发现同步台账。</p></div>
+        <div class="section-toolbar"><div class="d-flex align-center ga-2"><h2>项目文件来源</h2><HelpTip text="独立来源可细分台账项目；会话未选择来源时，从共享可访问目录自动发现同步台账。"/></div><ActionIcon @click="addSource" label="添加来源" icon="mdi-plus"/></div>
+        <div><div v-for="(source,index) in data.sync_sources" :key="index" class="source-editor"><div class="settings-pair mb-4"><v-text-field v-model="source.id" label="来源 ID"/><v-text-field v-model="source.root" label="同步工具目录"/></div><ValueListField v-model="source.projects" label="允许访问的项目 ID" :disabled="busy"/><ActionIcon color="error" class="mt-2" @click="removeSource(index)" label="移除此来源" icon="mdi-delete-outline"/></div><p v-if="!data.sync_sources?.length" class="text-body-2 text-secondary">未配置独立来源，将从共享可访问目录自动发现同步台账。</p></div>
       </div>
-      <div class="save-bar"><p>保存后重启对应工具以应用配置。</p><v-btn color="primary" prepend-icon="mdi-content-save-outline" :loading="busy" @click="save">保存配置</v-btn></div>
+      <div v-if="tool!=='sync'" class="save-bar"><p>保存后重启对应工具以应用配置。</p><v-btn color="primary" prepend-icon="mdi-content-save-outline" :loading="busy" @click="save">保存配置</v-btn></div>
     </v-card>
-    <v-card class="pa-5 settings-aside"><v-icon icon="mdi-tune-variant" color="primary" size="30" class="mb-4"/><h3>与现有工具保持一致</h3><p>此页面读写各工具原有配置，不另建一份运行配置。</p><p v-if="tool==='sync'">简报生成和微信推送相互独立。文件数为已发现文件，解析指标为有效数据小计。</p><p v-else-if="tool==='nas'">上传仍使用 Windows 当前 SMB 会话或原有环境认证，不在页面保存 NAS 密码。</p><p v-else>群聊需要 @ 当前账号才触发回复。可访问目录与网页对话共享；独立来源可细分台账项目，未知数据不冒充解析结果。</p><p>配置校验失败时会保留原配置。</p></v-card>
+    <DrawingFileDeliveryPanel v-if="tool==='analysis'" :api="api" :responsibility-scope="drawingScope" @notice="(...args)=>emit('notice',...args)"/>
+    </div>
+    <v-card class="pa-5 settings-aside"><v-icon icon="mdi-tune-variant" color="primary" size="30" class="mb-4"/><h3>与现有工具保持一致</h3><p v-if="tool!=='sync'">此页面读写各工具原有配置，不另建一份运行配置。</p><p v-if="tool==='sync'">下载设置由同步工具管理，推送文在下载成功收尾后生成。</p><p v-else-if="tool==='analysis'">简报生成和微信推送相互独立。文件数为已发现文件，解析指标为有效数据小计。</p><p v-else-if="tool==='nas'">上传仍使用 Windows 当前 SMB 会话或原有环境认证，不在页面保存 NAS 密码。</p><p v-else>群聊需要 @ 当前账号才触发回复。可访问目录与网页对话共享；独立来源可细分台账项目，未知数据不冒充解析结果。</p><p v-if="tool!=='sync'">配置校验失败时会保留原配置。</p></v-card>
   </div>
-  <v-dialog :model-value="!!chatEdit" @update:model-value="chatEdit=null" max-width="640"><v-card v-if="chatEdit" class="pa-6"><h2 class="mb-5">{{editIndex<0?'添加会话':'编辑会话'}}</h2><div class="settings-form"><div class="settings-pair"><v-text-field v-model="chatEdit.id" label="本地会话 ID"/><v-select v-model="chatEdit.kind" :items="[{title:'群聊',value:'group'},{title:'私聊',value:'private'}]" label="类型"/></div><v-text-field v-model="chatEdit.name" label="会话完整名称"/><v-text-field v-model="chatEdit.username" label="微信原生账号 / 群 ID"/><v-textarea v-model="chatEdit.persona" label="回复要求" rows="3"/><v-select v-model="chatEdit.sync_sources" :items="sourceIds" label="独立台账来源（留空使用共享目录）" multiple chips/><v-switch v-model="chatEdit.reply" label="为此会话启用回复"/></div><v-card-actions class="mt-5"><v-btn v-if="editIndex>=0" color="error" @click="data.chats.splice(editIndex,1);chatEdit=null">移除会话</v-btn><v-spacer/><v-btn @click="chatEdit=null">取消</v-btn><v-btn color="primary" variant="flat" :disabled="!chatEdit.id.trim()||!chatEdit.name.trim()" @click="commitChat">保留修改</v-btn></v-card-actions></v-card></v-dialog>
+  <v-dialog :model-value="!!chatEdit" @update:model-value="chatEdit=null" max-width="640"><v-card v-if="chatEdit" class="pa-6"><h2 class="mb-5">{{editIndex<0?'添加会话':'编辑会话'}}</h2><div class="settings-form"><div class="settings-pair"><v-text-field v-model="chatEdit.id" label="本地会话 ID"/><v-select v-model="chatEdit.kind" :items="[{title:'群聊',value:'group'},{title:'私聊',value:'private'}]" label="类型"/></div><v-text-field v-model="chatEdit.name" label="会话完整名称"/><v-text-field v-model="chatEdit.username" label="微信原生账号 / 群 ID"/><v-textarea v-model="chatEdit.persona" label="回复要求" rows="3"/><section class="source-editor" aria-label="独立台账来源"><h3 class="text-body-2">独立台账来源</h3><p class="text-caption text-secondary mb-2">勾选此会话允许使用的来源；未选择时使用共享目录。</p><v-checkbox v-for="id in sourceIds" :key="id" v-model="chatEdit.sync_sources" :value="id" :label="id" hide-details density="compact"/><p v-if="!sourceIds.length" class="text-body-2 text-secondary">暂无独立来源，使用共享目录。</p></section><v-switch v-model="chatEdit.reply" label="为此会话启用回复"/></div><v-card-actions class="mt-5"><v-btn v-if="editIndex>=0" color="error" @click="data.chats.splice(editIndex,1);chatEdit=null">移除会话</v-btn><v-spacer/><v-btn @click="chatEdit=null">取消</v-btn><v-btn color="primary" variant="flat" :disabled="!chatEdit.id.trim()||!chatEdit.name.trim()" @click="commitChat">保留修改</v-btn></v-card-actions></v-card></v-dialog>
 </template>

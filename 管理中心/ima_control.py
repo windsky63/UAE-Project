@@ -7,6 +7,20 @@ import json
 import os
 from pathlib import Path
 import subprocess
+from file_snapshot_cache import FileSnapshotCache
+
+REPORT_CACHE = FileSnapshotCache()
+
+
+def report_snapshot(path):
+    def load():
+        raw = json.loads(path.read_text(encoding='utf-8'))
+        rows = raw.get('files', [])
+        summary = {key: value for key, value in raw.items() if key not in ('collection', 'files')}
+        summary.update(files=rows[:20], total_files=len(rows),
+                       counts=dict(Counter(row.get('status', '') for row in rows)))
+        return raw, summary
+    return REPORT_CACHE.get(path, load)
 
 FIELDS = {'source', 'kb', 'folder', 'recursive', 'collect_enabled', 'auto_sync_enabled', 'ledger_path',
           'database_path', 'downloads_path', 'interval_seconds', 'sync_time'}
@@ -79,13 +93,11 @@ def snapshot(manager):
     base = manager.folder('ima')
     for name, filename in [('plan', 'latest-plan.json'), ('collection', 'collection-report.json')]:
         path = base / 'runtime' / filename
-        payload = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else None
+        raw, summary = report_snapshot(path) if path.is_file() else (None, None)
+        payload = dict(raw) if raw is not None else None
         if payload:
             if name == 'plan':
-                rows = payload.get('files', [])
-                payload = {**{k: v for k, v in payload.items() if k not in ('collection', 'files')},
-                           'files': rows[:20], 'total_files': len(rows),
-                           'counts': dict(Counter(row.get('status', '') for row in rows))}
+                payload = dict(summary)
             else:
                 payload = {k: v for k, v in payload.items() if k != 'files'}
         if payload is not None:
@@ -143,7 +155,7 @@ def records(manager, kind, offset=0, limit=20, search='', status=''):
     if kind in ('plan', 'collection'):
         filename = 'latest-plan.json' if kind == 'plan' else 'collection-report.json'
         path = manager.folder('ima') / 'runtime' / filename
-        data = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
+        data = report_snapshot(path)[0] if path.is_file() else {}
         rows = data.get('files', [])
     elif kind == 'journal':
         path = Path(config(manager)['data']['source']) / '每日更新记录.txt'

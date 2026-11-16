@@ -3,6 +3,7 @@ from contextlib import closing, contextmanager
 from datetime import datetime, timezone, timedelta
 import hashlib
 import codecs
+import errno
 import json
 import os
 from pathlib import Path, PureWindowsPath
@@ -14,22 +15,30 @@ import threading
 import time
 import uuid
 from codex_runtime import access_directories
+from project_layout import tool_path
 from log_tools import log_files, captured_line, redact
+from shared_services.log_policy import managed_environment
 from daily_publications import version_progress
+from file_snapshot_cache import FileSnapshotCache
+
+LOG_CACHE = FileSnapshotCache(entries=128, read_limit=256 * 1024)
 
 HOME = Path(__file__).resolve().parent
 BEIJING = timezone(timedelta(hours=8))
 TOOLS = {
+    'analysis': dict(name='资料解析及管理工具', folder='资料解析及管理工具', icon='mdi-file-document-outline', schedule='下载完成后解析，10:30兜底启动', description='资料解析、管道及图纸日报、图纸文件增量发送'),
     'sync': dict(name='FusionLive 同步工具', folder='FusionLive同步工具', icon='mdi-cloud-download-outline',
-                 schedule='每天 02:00—10:30', description='平台资料下载、后台解析与管道简报'),
+                 schedule='每天 02:00—10:30', description='平台资料盘点与下载'),
     'nas': dict(name='绿联云上传工具', folder='绿联云上传工具', icon='mdi-cloud-upload-outline',
-                schedule='每天 12:00—次日 00:00', description='将已确认下载的文件同步到 NAS'),
+                schedule='解析完成后上传，12:00兜底启动', description='将已确认下载的文件同步到 NAS'),
     'wechat': dict(name='微信与 Codex', folder='codex-wechat', icon='mdi-wechat',
                    schedule='监听启动后持续运行', description='会话采集、文件检索与 Codex 回复'),
     'ima': dict(name='ima 知识库', folder='Ima知识库管理', icon='mdi-book-open-page-variant-outline',
                 schedule='启动后按配置间隔同步', description='台账资料复制、知识库更新与旧版归档'),
 }
 LABELS = {'start': '启动调度', 'stop': '安全停止', 'check': '本地检查',
+          'upload-once': '上传一次',
+          'export-ledger': '导出文件台账',
           'hash-check': '检查NAS本机校验连接',
           'clean-analysis-cache': '清理旧解析缓存',
           'clean-history': '手动清理历史文件', 'stop-history-cleanup': '停止历史清理',
@@ -39,12 +48,16 @@ LABELS = {'start': '启动调度', 'stop': '安全停止', 'check': '本地检�
           'briefing': '生成管道简报', 'analysis': '恢复后台解析', 'stop-analysis': '停止后台解析',
           'simulate': '模拟完整流程', 'push-text': '手动推送日报',
           'push-briefing': '手动推送管道简报', 'push-all': '手动推送日报及管道简报'}
+LABELS['push-drawings'] = '手动推送图纸简报'
+LABELS.update({'unit-text':'生成单元资料推送文','unit-text-send':'发送单元资料推送文'})
 SYNC_DEFAULT = dict(analysis_poll_seconds=5, analysis_idle_log_seconds=300,
-                    analysis_idle_exit_seconds=0, analysis_auto_idle_exit_seconds=120,
+                    analysis_idle_exit_seconds=0, analysis_auto_idle_exit_seconds=0,
                     enabled=True, recipients=[], prepare_time_beijing='10:40', send_time_beijing='11:00',
-                    text_send_time_beijing=None, briefing_send_time_beijing=None,
+                    text_send_time_beijing=None, briefing_send_time_beijing=None,unit_text_send_time_beijing=None,
                     send_window_minutes=5, briefing_title='管道资料同步简报', publish_text=True,
+                    publication_start_time_beijing=None, publication_end_time_beijing=None,
                     publish_briefing=True, test_recipient='文件传输助手')
+SYNC_DEFAULT['publish_drawings'] = True
 NAS_REMOTE_DEFAULT = dict(enabled=True,host='',port=22,username='windsky',root_path='',
                           identity_file='',known_hosts_file='',python_command='python3',
                           timeout_seconds=3600,fallback_to_smb=False)
@@ -52,7 +65,7 @@ NAS_DEFAULT = dict(source_root='../FusionLive同步工具/downloads/HABSHANDBN',
                    download_ledger='../FusionLive同步工具/runtime/ledger.sqlite3',
                    target_root=r'\\nas.example.test\工程项目文件\阿联酋项目FusionLive平台资料', start_hour_beijing=12, stop_hour_beijing=0,
                    chunk_bytes=1048576, retry_attempts=2, preserve_previous_versions=True,
-                   remote_hash=NAS_REMOTE_DEFAULT,verification_method='ssh')
+                   remote_hash=NAS_REMOTE_DEFAULT,verification_method='ssh',ledger_update_interval_minutes=60)
 
 
 def now():
@@ -87,21 +100,33 @@ def counts(path, table, column, where=''):
 
 
 def locked(path):
-    if not Path(path).is_file():
-        return False
+    """True for contention, False for an unlocked/missing file, 'unknown' on I/O errors.
+
+    Unknown remains truthy for callers protecting running work, but must not be
+    displayed as evidence that another process actually owns the tool lock.
+    """
     try:
         with Path(path).open('r+b') as stream:
+            try:
+                if os.name == 'nt':
+                    import msvcrt
+                    msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError as exc:
+                if exc.errno in (errno.EACCES, errno.EAGAIN, errno.EDEADLK) or getattr(exc, 'winerror', None) == 33:
+                    return True
+                return 'unknown'
             if os.name == 'nt':
-                import msvcrt
-                msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
                 msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
             else:
-                import fcntl
-                fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 fcntl.flock(stream, fcntl.LOCK_UN)
         return False
+    except FileNotFoundError:
+        return False
     except OSError:
-        return True
+        return 'unknown'
 
 
 def clean_log(value):
@@ -172,12 +197,12 @@ class Manager:
     def folder(self, tool):
         if tool not in TOOLS:
             raise ValueError('未知工具')
-        return self.root / TOOLS[tool]['folder']
+        return tool_path(TOOLS[tool]['folder'], self.root)
 
     def python(self, tool):
         candidate = self.root / '.venv-analysis/Scripts/python.exe'
         if not candidate.is_file():
-            raise ValueError('未找到共享环境 .venv-analysis，请在项目根目录运行 install_python312.cmd 安装全部工具依赖')
+            raise ValueError('未找到共享环境 .venv-analysis，请在项目根目录运行 安装依赖.cmd 安装全部工具依赖')
         return str(candidate)
 
     def tasks(self, tool='', limit=30):
@@ -202,16 +227,26 @@ class Manager:
             return [dict(r) for r in rows]
 
     def live(self, tool):
-        tasks = self.tasks(tool, 100)
-        own = any(t['state'] == 'running' and t['action'] == 'start' for t in tasks)
-        folder = self.folder(tool)
-        if tool == 'wechat':
-            config = read_json(folder / 'wechat.codex.json', {})
-            lock = folder / config.get('database_cache', 'data/wechat-db') / 'bridge.lock'
-        else:
-            lock = folder / ('runtime/watch.lock' if tool == 'ima' else 'runtime/scheduler.lock' if tool == 'sync' else 'runtime/uploader.lock')
-        external = locked(lock)
-        return 'running' if own else 'external' if external else 'stopped'
+        # Serialize lock probes too: simultaneous overview/ima polling must not
+        # mistake this manager's own short-lived probe for an external owner.
+        with self.mutex:
+            tasks = self.tasks(tool, 100)
+            owned = [t for t in tasks if t['id'] in self.children and self.children[t['id']].poll() is None]
+            if any(t['action'] == 'start' for t in owned):
+                return 'running'
+            if any(t['action'] != 'stop' for t in owned):
+                return 'busy'
+            folder = self.folder(tool)
+            if tool == 'analysis':
+                state=locked(self.folder('sync') / 'runtime/publication_scheduler/worker.lock')
+                return 'unknown' if state == 'unknown' else 'external' if state else 'stopped'
+            if tool == 'wechat':
+                config = read_json(folder / 'wechat.codex.json', {})
+                lock = folder / config.get('database_cache', 'data/wechat-db') / 'bridge.lock'
+            else:
+                lock = folder / ('runtime/watch.lock' if tool == 'ima' else 'runtime/scheduler.lock' if tool == 'sync' else 'runtime/uploader.lock')
+            state = locked(lock)
+            return 'unknown' if state == 'unknown' else 'external' if state else 'stopped'
 
     def overview(self):
         sync = self.folder('sync')
@@ -220,8 +255,8 @@ class Manager:
         parsed = counts(sync / 'runtime/file_analysis/queue.sqlite3', 'jobs', 'state', 'WHERE active=1')
         uploads = counts(self.folder('nas') / 'runtime/upload.sqlite3', 'uploads', 'status')
         tools = [{**meta, 'id': key, 'state': self.live(key), 'installed': self.folder(key).is_dir(),
-                  'actions': (['start', 'stop', 'check', 'collect', 'plan', 'sync-once'] if key == 'ima' else ['start', 'stop', 'check', 'analysis', 'stop-analysis', 'briefing', 'generate-text','clean-history','stop-history-cleanup','clean-analysis-cache'] if key == 'sync'
-                              else ['start', 'stop', 'check'] if key == 'nas' else ['start', 'stop', 'check', 'simulate'])}
+                  'actions': (['start', 'stop', 'check', 'collect', 'plan', 'sync-once'] if key == 'ima' else ['start', 'stop', 'check', 'generate-text', 'export-ledger', 'clean-history','stop-history-cleanup'] if key == 'sync' else ['start', 'stop', 'check', 'analysis', 'stop-analysis', 'briefing', 'unit-text', 'clean-analysis-cache'] if key == 'analysis'
+                              else ['start', 'upload-once', 'stop', 'check'] if key == 'nas' else ['start', 'stop', 'check', 'simulate'])}
                  for key, meta in TOOLS.items()]
         wechat = read_json(self.folder('wechat') / 'wechat.codex.json', {})
         return dict(time=now(), tools=tools, downloads=downloads, analysis=parsed, uploads=uploads,
@@ -235,39 +270,42 @@ class Manager:
     def command(self, tool, action):
         base, python = self.folder(tool), self.python(tool)
         if tool == 'ima':
-            commands = {'start': ['watch', '--execute'], 'stop': ['stop'], 'check': ['scan'],
-                        'collect': ['collect'], 'plan': ['plan'], 'sync-once': ['sync', '--execute']}
+            commands = {'start': ['watch', '--execute', '--summary'], 'stop': ['stop'], 'check': ['scan'],
+                        'collect': ['collect', '--summary'], 'plan': ['plan', '--summary'], 'sync-once': ['sync', '--execute', '--summary']}
             if action not in commands:
                 raise ValueError('不支持的 ima 操作')
             return [python, '-u', '-m', 'ima_manager', *commands[action]], base
         if tool == 'sync':
-            if action == 'clean-analysis-cache':
-                return [python, '-u', str(base/'app/archive_cache.py'), '--cleanup', '--base-dir', str(base)], base
-            if action=='clean-history':
-                command = [python,'-u',str(base/'app/history_retention.py'),'--base-dir',str(base),
-                           '--execute','--progress-pipe']
-                return command,base
-            if action in ('briefing-latest', 'briefing-send'):
-                return [python, '-u', str(HOME / 'briefing_runner.py'), '--base', str(base),
-                        *(['--send'] if action == 'briefing-send' else [])], base
-            if action in ('push-text', 'push-briefing', 'push-all'):
-                from daily_publications import day_value
-                return [python, '-u', str(HOME / 'publication_runner.py'), '--base', str(base),
-                        '--date', day_value(), '--kind', action[5:]], base
+            if action == 'clean-history':
+                return [python, '-u', str(base/'app/history_retention.py'), '--base-dir', str(base), '--execute', '--progress-pipe'], base
             commands = {'start': ['scheduler'], 'stop': ['scheduler', '--stop'],
-                        'generate-text': ['sync', 'push-report'],
-                        'check': ['preflight', '--gui', '--wechat'],
-                        'briefing': ['briefing'], 'analysis': ['analysis_worker', '--watch', '--resume'],
-                        'stop-analysis': ['analysis_worker', '--stop']}
+                        'generate-text': ['sync', 'push-report'], 'export-ledger': ['ledger_export'], 'check': ['preflight', '--gui']}
             if action not in commands:
                 raise ValueError('不支持的同步操作')
-            return [python, '-u', str(base / 'main.py'), *commands[action]], base
+            return [python, '-u', str(base/'main.py'), *commands[action]], base
+        if tool == 'analysis':
+            data = self.folder('sync')
+            if action in ('briefing-latest', 'briefing-send'):
+                return [python, '-u', str(HOME/'briefing_runner.py'), '--base', str(data),
+                        *(['--send'] if action == 'briefing-send' else [])], data
+            if action.startswith('push-'):
+                from daily_publications import day_value
+                return [python, '-u', str(HOME/'publication_runner.py'), '--base', str(data), '--date', day_value(), '--kind', action[5:]], data
+            commands = {'start': ['scheduler'], 'stop': ['scheduler', '--stop'],
+                        'analysis': ['analysis_worker', '--watch', '--resume'], 'stop-analysis': ['analysis_worker', '--stop'],
+                        'briefing': ['briefing'],
+                        'clean-analysis-cache': ['archive_cache', '--cleanup', '--base-dir', str(data)],
+                        'check': ['analysis_worker', '--help'],
+                        'unit-text':['unit_text'], 'unit-text-send':['unit_text','--send']}
+            if action not in commands:
+                raise ValueError('不支持的解析操作')
+            return [python, '-u', str(base/'main.py'), *commands[action], '--data-home', str(data)], data
         if tool == 'nas':
-            if action not in ('start', 'stop', 'check', 'hash-check'):
+            if action not in ('start', 'upload-once', 'stop', 'check', 'hash-check'):
                 raise ValueError('不支持的上传操作')
             # The local check deliberately does not connect to the NAS.
             return [python, '-u', str(base / 'main.py'),
-                    {'start': 'schedule', 'stop': 'stop', 'check': 'integrity',
+                    {'start': 'schedule', 'upload-once':'manual-once', 'stop': 'stop', 'check': 'integrity',
                      'hash-check': 'remote-hash-check'}[action]], base
         if action == 'simulate':
             return [python, '-u', str(base / 'scripts/simulate_sync_pipeline.py')], base
@@ -276,10 +314,18 @@ class Manager:
         return [python, '-u', '-m', 'wechat_local', '--config', str(base / 'wechat.codex.json'),
                 *({'start': [], 'stop': ['--stop'], 'check': ['--check']}[action])], base
 
-    def action(self, tool, action):
+    def action(self, tool, action, *, plan_id=None, unit_text_sha=None):
+        if unit_text_sha is not None and (tool!='analysis' or action!='unit-text-send' or not isinstance(unit_text_sha,str) or not re.fullmatch(r'[0-9a-f]{64}',unit_text_sha)):
+            raise ValueError('单元资料推送文快照校验值无效')
+        if plan_id is not None and (tool != 'ima' or action != 'sync-once'
+                or not isinstance(plan_id, str) or not re.fullmatch(r'[0-9a-f]{32}', plan_id)):
+            raise ValueError('预览计划 ID 无效')
         if tool=='sync' and action=='stop-history-cleanup':
             return self.stop_history_cleanup()
         command, cwd = self.command(tool, action)
+        if unit_text_sha is not None:command+=['--expected-sha',unit_text_sha]
+        if plan_id is not None:
+            command += ['--plan-id', plan_id]
         if not cwd.is_dir():
             raise ValueError('工具目录不存在')
         with self.mutex:
@@ -288,12 +334,12 @@ class Manager:
                 raise ValueError('自动同步已关闭，请在 ima 同步配置中开启并保存，或使用手动同步。')
             if tool == 'ima' and action in ('collect', 'sync-once') and self.live('ima') != 'stopped':
                 raise ValueError('ima 自动同步正在运行，请先安全停止再执行单次操作。')
-            if tool == 'sync' and (action.startswith('briefing') or action.startswith('push-')):
+            if tool == 'analysis' and (action.startswith('briefing') or action.startswith('push-')):
                 if any(t['state'] == 'running' and t['action'] in ('briefing-latest', 'briefing-send') for t in active):
                     raise ValueError('Codex简报业务任务正在执行，请等待完成或先停止该对话任务')
-            if tool == 'sync' and action.startswith('push-'):
+            if tool == 'analysis' and action.startswith('push-'):
                 from daily_publications import day_value, prepare_manual
-                prepare_manual(cwd, day_value(), action[5:], self.config('sync')['data'])
+                prepare_manual(cwd, day_value(), action[5:], self.config('analysis')['data'])
                 if any(t['state'] == 'running' and t['action'].startswith('push-') for t in active):
                     raise ValueError('手动推送正在运行，请先等待当前任务结束')
             if any(t['state'] == 'running' and t['action'] == action for t in active):
@@ -302,7 +348,7 @@ class Manager:
                 raise ValueError('工具已在运行，无需重复启动')
             if action == 'analysis' and locked(self.folder('sync') / 'runtime/file_analysis/worker.lock'):
                 raise ValueError('后台解析已在运行')
-            if tool == 'sync' and action == 'clean-analysis-cache':
+            if tool == 'analysis' and action == 'clean-analysis-cache':
                 if not (cwd/'runtime/file_analysis/queue.sqlite3').is_file():
                     raise ValueError('未找到解析队列，未执行缓存清理。')
                 for relative,label in (('runtime/sync.lock','同步下载'),
@@ -320,7 +366,7 @@ class Manager:
             identity = uuid.uuid4().hex
             if tool=='sync' and action=='clean-history':
                 command += ['--job-id',identity]
-            if tool == 'sync' and action in ('briefing-latest', 'briefing-send'):
+            if tool == 'analysis' and action in ('briefing-latest', 'briefing-send'):
                 if any(t['state'] == 'running' and (t['action'].startswith('briefing') or
                        t['action'].startswith('push-')) for t in active):
                     raise ValueError('已有简报生成或推送任务，请等待完成')
@@ -328,9 +374,10 @@ class Manager:
             log = self.root / 'logs' / now()[:10] / tool / (now()[:10] + '-' + tool + '-' + action + '-' + identity[:8] + '.log')
             log.parent.mkdir(parents=True, exist_ok=True)
             env = {**os.environ, 'PYTHONUTF8': '1', 'PYTHONIOENCODING': 'utf-8'}
+            log_options = managed_environment(HOME, env)
+            env['PROJECT_LOG_ROOT'] = str(self.root/'logs')
             env.update(PROJECT_TOOLS_RUN_ID=identity,PROJECT_TOOLS_TOOL=tool,PROJECT_TOOLS_ACTION=action)
-            if tool == 'nas':
-                env['PROJECT_TOOLS_LOG_CAPTURED'] = '1'
+
             cleanup = tool=='sync' and action=='clean-history'
             with log.open('wb') as stream:
                 process = subprocess.Popen(command, cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -346,31 +393,35 @@ class Manager:
                                                  started=now(),phase='启动后台任务')
                 self.history_job = identity
                 self.history_thread = threading.Thread(target=self.read_history_progress,
-                    args=(identity,process,log),daemon=True,name='history-cleanup-progress')
+                    args=(identity,process,log,log_options),daemon=True,name='history-cleanup-progress')
                 self.history_thread.start()
             else:
                 reader=threading.Thread(target=self.read_task_output,
-                    args=(identity,tool,action,process,log),daemon=True,name='task-log-'+identity[:8])
+                    args=(identity,tool,action,process,log,log_options),daemon=True,name='task-log-'+identity[:8])
                 self.output_threads[identity]=reader
                 reader.start()
             return dict(id=identity, state='running', label=LABELS[action])
 
-    def read_task_output(self, identity, tool, action, process, log):
+    def read_task_output(self, identity, tool, action, process, log, log_options=None):
         started=time.monotonic()
         warned=False
         def record(message):
             nonlocal warned
             try:
-                captured_line(log,message,now())
+                captured_line(log,message,now(), **({key:log_options[key] for key in ('max_bytes','backups')} if log_options else {}))
             except OSError as exc:
                 if not warned:
                     print(f'任务日志写入失败：tool={tool}；run={identity}；path={log}；{type(exc).__name__}：{exc}；继续排空子进程输出。',file=sys.stderr,flush=True)
                     warned=True
         record(f'任务启动：tool={tool}；action={action}；run={identity}；pid={process.pid}；输出={log}')
         try:
-            with process.stdout:
-                for line in process.stdout:
-                    record(decode_text(line))
+            pipe = getattr(process, 'stdout', None)
+            if pipe is not None and hasattr(pipe, '__enter__'):
+                with pipe:
+                    for line in pipe:
+                        record(decode_text(line))
+            else:
+                record('任务日志输出流不可用，请核对任务进程状态。')
         except (OSError,ValueError) as exc:
             record(f'日志读取异常：run={identity}；{type(exc).__name__}：{exc}')
         finally:
@@ -383,13 +434,13 @@ class Manager:
             record(f'任务输出结束：tool={tool}；action={action}；run={identity}；pid={process.pid}；'
                    f'退出码={code if code is not None else "尚未退出"}；耗时={time.monotonic()-started:.1f}秒')
 
-    def read_history_progress(self, identity, process, log):
+    def read_history_progress(self, identity, process, log, log_options=None):
         prefix = b'@history-cleanup '
         warned=False
         def record(line):
             nonlocal warned
             try:
-                captured_line(log,decode_text(line),now())
+                captured_line(log,decode_text(line),now(), **({key:log_options[key] for key in ('max_bytes','backups')} if log_options else {}))
             except OSError as exc:
                 if not warned:
                     print(f'历史清理日志写入失败：run={identity}；{exc}；继续读取任务进度。',file=sys.stderr,flush=True)
@@ -478,6 +529,7 @@ class Manager:
             with writing(self.tasks_path) as db:
                 db.row_factory = sqlite3.Row
                 rows = db.execute('SELECT * FROM tasks WHERE tool=?', (tool,)).fetchall()
+                protected = {r[0] for r in db.execute("SELECT log FROM tasks WHERE state IN ('running','detached') AND log<>''")}
                 for row in rows:
                     if row['state'] == 'running':
                         result['skipped'] += 1
@@ -489,20 +541,27 @@ class Manager:
                         continue
                     name = row['log']
                     if name:
+                        if name in protected:
+                            result['skipped'] += 1
+                            continue
                         path = self.runtime / name
                         if Path(name).name != name or PureWindowsPath(name).name != name:
                             result['errors'].append(dict(id=row['id'], reason='日志路径无效'))
                             continue
-                        if not path.exists() and not path.is_symlink():
+                        rotation = re.compile(re.escape(path.stem) + r'\.\d+\.log$')
+                        if not path.exists() and not path.is_symlink() and not any(
+                                item.parent == path.parent and rotation.fullmatch(item.name) for item in safe_logs):
                             path = self.root / 'logs' / row['started'][:10] / tool / name
                         try:
-                            if path.exists() or path.is_symlink():
-                                if path not in safe_logs or path.is_symlink() or path.is_junction() or path.resolve() != path.absolute():
-                                    result['errors'].append(dict(id=row['id'], reason='日志路径受保护'))
+                            related = {path} | {item for item in safe_logs if item.parent == path.parent and rotation.fullmatch(item.name)}
+                            for item in sorted(related):
+                                if not item.exists() and not item.is_symlink():
                                     continue
-                                path.unlink()
+                                if item not in safe_logs or item.is_symlink() or item.is_junction() or item.resolve() != item.absolute():
+                                    raise ValueError('日志路径受保护')
+                                item.unlink()
                                 result['deleted_logs'] += 1
-                        except OSError as exc:
+                        except (OSError, ValueError) as exc:
                             result['errors'].append(dict(id=row['id'], reason=str(exc)))
                             continue
                     db.execute('DELETE FROM tasks WHERE id=?', (row['id'],))
@@ -524,6 +583,7 @@ class Manager:
         if workbook:
             try:
                 result['briefing']['download'] = register(workbook)
+                result['pipeline']['download'] = result['briefing']['download']
             except (OSError, ValueError):
                 pass
         return result
@@ -532,12 +592,18 @@ class Manager:
         from daily_publications import day_value
         if day_value(day) != day_value():
             raise ValueError('仅支持当天推送，请刷新页面')
-        if kind not in ('text', 'briefing', 'all'):
+        if kind not in ('text', 'briefing', 'drawings', 'all'):
             raise ValueError('推送类型无效')
-        return self.action('sync', 'push-' + kind)
+        return self.action('analysis', 'push-' + kind)
 
     def config_path(self, tool):
-        return self.folder(tool) / {'ima': 'runtime/settings.json', 'sync': 'runtime/wechat_push.json', 'nas': 'config.json', 'wechat': 'wechat.codex.json'}[tool]
+        if tool == 'unit_text':
+            return self.folder('sync')/'runtime/unit_text.json'
+        if tool == 'drawing_delivery':
+            return self.folder('sync') / 'runtime/drawing_file_delivery.json'
+        if tool == 'drawing_scope':
+            return self.root / '管理中心/config/drawing_scope.json'
+        return self.folder('sync' if tool == 'analysis' else tool) / {'analysis': 'runtime/wechat_push.json', 'ima': 'runtime/settings.json', 'sync': 'runtime/wechat_push.json', 'nas': 'config.json', 'wechat': 'wechat.codex.json'}[tool]
 
     def nas_hash_status(self):
         current = self.config('nas')
@@ -594,7 +660,46 @@ class Manager:
                 creationflags=getattr(subprocess,'CREATE_NEW_CONSOLE',16))
         return dict(message='首次配置向导已在服务器桌面打开。请在服务器终端输入用户名及密码，完成后刷新此页。')
 
-    def config(self, tool):
+    def config(self, tool, date=None):
+        if tool == 'unit_text':
+            from importlib.util import spec_from_file_location,module_from_spec
+            from daily_publications import day_value
+            spec=spec_from_file_location('unit_text_config',self.folder('analysis')/'app/unit_text.py')
+            module=module_from_spec(spec);spec.loader.exec_module(module)
+            path=self.config_path(tool)
+            selected_day=day_value(date or '')
+            receipt=path.with_name('unit_text_deliveries.sqlite3');deliveries=[]
+            if receipt.is_file():
+                with sqlite3.connect(receipt.resolve().as_uri()+'?mode=ro',uri=True) as db:
+                    db.row_factory=sqlite3.Row
+                    deliveries=[dict(r) for r in db.execute('SELECT day,recipient,state,attempts,error,updated FROM deliveries WHERE day=? ORDER BY updated DESC LIMIT 1000',(selected_day,))]
+            shared=self.config_path('analysis')
+            return dict(data=module.settings_from_shared(read_json(shared,{})),revision=hashlib.sha256(shared.read_bytes()).hexdigest() if shared.exists() else '',
+                        snapshot=module.snapshot(self.folder('sync'),selected_day),deliveries=deliveries,today=now()[:10])
+        if tool == 'sync':
+            return dict(data=dict(download_start_time_beijing='02:00',download_end_time_beijing='10:30',push_text_generation='after_download'),revision='',exists=True,read_only=True)
+        if tool == 'drawing_delivery':
+            from importlib.util import spec_from_file_location, module_from_spec
+            from drawing_scope import options as scope_options
+            spec=spec_from_file_location('drawing_delivery_settings', self.folder('analysis')/'app/drawing_delivery_settings.py')
+            module=module_from_spec(spec); spec.loader.exec_module(module)
+            path=self.config_path(tool)
+            status=read_json(path.with_name('drawing_file_delivery_status.json'),{})
+            deliveries=[]
+            journal=path.with_name('drawing_file_delivery.sqlite3')
+            if journal.is_file():
+                with sqlite3.connect(journal.resolve().as_uri()+'?mode=ro',uri=True) as db:
+                    db.row_factory=sqlite3.Row
+                    deliveries=[dict(row) for row in db.execute('SELECT chat,state,error,updated,payload FROM versions ORDER BY updated DESC LIMIT 20')]
+            return dict(data=module.validate(read_json(path, {})), revision=hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else '', exists=path.exists(), status=status, deliveries=deliveries,
+                        drawing_types=module.drawing_type_options(), drawing_type_catalog=module.drawing_type_catalog(),
+                        scope_options=scope_options(self.folder('analysis')/'document_coding_rules.json'),
+                        responsibility_scope=read_json(self.config_path('drawing_scope'),dict(disciplines=[],units=[])))
+        if tool == 'drawing_scope':
+            from drawing_scope import load, options
+            path = self.config_path(tool)
+            return dict(data=load(path), revision=hashlib.sha256(path.read_bytes()).hexdigest(), exists=True,
+                        options=options(self.folder('analysis')/'document_coding_rules.json'))
         if tool == 'ima':
             from ima_control import config
             return config(self)
@@ -602,7 +707,7 @@ class Manager:
         data = read_json(path, {})
         if not isinstance(data, dict):
             raise ValueError('配置文件必须包含 JSON 对象，请检查配置格式')
-        if tool == 'sync':
+        if tool in ('sync', 'analysis'):
             data = {**SYNC_DEFAULT, **data}
             for name in ('text_send_time_beijing','briefing_send_time_beijing'):
                 if data[name] is None:
@@ -616,6 +721,7 @@ class Manager:
             if not isinstance(remote,dict):
                 raise ValueError('remote_hash须为配置对象')
             data['remote_hash'] = {**NAS_REMOTE_DEFAULT,**remote}
+            data['remote_hash']['username'] = data['remote_hash'].get('username') or 'windsky'
             data['remote_hash']['enabled'] = data.get('verification_method','ssh')=='ssh'
             data['remote_hash']['fallback_to_smb'] = False
             if not data['remote_hash']['host']:
@@ -645,16 +751,36 @@ class Manager:
         return result
 
     def save_config(self, tool, data, revision):
+        if tool == 'sync':
+            raise ValueError('下载时段固定；解析及发布配置请使用资料解析及管理工具')
         if not isinstance(data, dict):
             raise ValueError('配置必须是对象')
         with self.mutex:
+            if tool=='unit_text':raise ValueError('请在资料解析及管理设置中保存共享会话和单元资料推送时间')
+            if tool == 'drawing_delivery':
+                from importlib.util import spec_from_file_location, module_from_spec
+                current=self.config(tool)
+                if current['revision'] != revision:
+                    raise ValueError('配置已被其他窗口修改，请刷新')
+                spec=spec_from_file_location('publication_settings',self.folder('analysis')/'app'/('unit_text.py' if tool=='unit_text' else 'drawing_delivery_settings.py'))
+                module=module_from_spec(spec); spec.loader.exec_module(module)
+                validated=module.validate(data)
+                path=self.config_path(tool); path.parent.mkdir(parents=True,exist_ok=True)
+                temporary=path.with_suffix('.'+uuid.uuid4().hex+'.tmp')
+                temporary.write_text(json.dumps(validated,ensure_ascii=False,indent=2),encoding='utf-8')
+                os.replace(temporary,path)
+                return self.config(tool)
+
             if tool == 'ima':
                 from ima_control import save_config
                 return save_config(self, data, revision)
             current = self.config(tool)
             if current['revision'] != revision:
                 raise ValueError('配置已被其他窗口修改，请刷新后重试')
-            if tool == 'sync':
+            if tool == 'drawing_scope':
+                from drawing_scope import validate
+                data = validate(data)
+            if tool == 'analysis':
                 allowed = set(SYNC_DEFAULT) | {'known_chats', 'recipient_publications', 'uia_profile'}
                 if set(data) - allowed - set(current['data']):
                     raise ValueError('配置包含不支持的字段')
@@ -667,9 +793,9 @@ class Manager:
                           '    path.parent.mkdir()\n'
                           '    path.write_text(json.dumps(data),encoding="utf-8")\n'
                           '    validated=load_settings(temporary)\n'
-                          'save_settings(validated)\n')
+                          'save_settings(validated,sys.argv[2])\n')
                 # Validate with the original loader in a temporary directory before writing.
-                self._validate(tool, script, data, [str(self.folder(tool) / 'app')])
+                self._validate(tool, script, data, [str(self.folder('analysis') / 'app'),str(self.folder('sync'))])
                 return self.config(tool)
             if tool == 'wechat':
                 data = {**data, 'codex_access_dirs': access_directories(self.folder('wechat'),
@@ -677,7 +803,7 @@ class Manager:
                 script = ('import json,sys;from wechat_local.config import LocalConfig;'
                           'data=LocalConfig.model_validate(json.load(sys.stdin));print(data.model_dump_json())')
                 data = json.loads(self._validate(tool, script, data))
-            else:
+            elif tool == 'nas':
                 unknown = set(data) - set(NAS_DEFAULT)
                 if unknown:
                     raise ValueError('上传配置包含不支持的字段：' + '、'.join(sorted(unknown)))
@@ -694,6 +820,8 @@ class Manager:
                     raise ValueError('分块大小超出范围')
                 if type(data['preserve_previous_versions']) is not bool:
                     raise ValueError('历史版本开关格式错误')
+                if type(data['ledger_update_interval_minutes']) is not int or not 60<=data['ledger_update_interval_minutes']<=10080:
+                    raise ValueError('文件台账最短更新间隔须为60至10080分钟')
                 remote = data.get('remote_hash',{})
                 if not isinstance(remote,dict) or set(remote)-set(NAS_REMOTE_DEFAULT):
                     raise ValueError('SSH配置包含不支持的字段；密码不能保存在配置中')
@@ -732,8 +860,8 @@ class Manager:
         if result.returncode:
             if 'ModuleNotFoundError' in result.stderr:
                 raise ValueError('共享环境 .venv-analysis 缺少工具依赖。请在项目根目录执行 '
-                                 '.\\.venv-analysis\\Scripts\\python.exe -m pip install -r requirements.txt，'
-                                 '或运行 install_python312.cmd。')
+                                 '安装依赖.cmd，'
+                                 '或运行 安装依赖.cmd。')
             error = clean_log(result.stderr.strip().splitlines()[-1] if result.stderr.strip() else '配置校验失败')
             raise ValueError(error[:500])
         return result.stdout
@@ -821,6 +949,8 @@ class Manager:
         # remain readable so an update never hides the evidence of earlier faults.
         for path in log_files(self.root / 'logs', True):
             owner = path.parent.name
+            if owner == 'sync' and re.fullmatch(r'analysis(?:-worker)?(?:\.\d+)?', path.stem):
+                owner = 'analysis'
             if owner in TOOLS and (not tool or tool == owner):
                 paths.append((path, str(path.relative_to(self.root)), owner))
         for path in log_files(self.root):
@@ -834,7 +964,16 @@ class Manager:
             candidates = list(log_files(base / 'logs', True)) + list(log_files(base / 'runtime'))
             if key == 'sync':
                 candidates += list(log_files(base / 'runtime/file_analysis'))
+            if key == 'analysis':
+                candidates += list(log_files(base / 'runtime/publication_jobs', True))
+                shared_jobs = self.folder('sync')/'runtime/publication_jobs'
+                if shared_jobs != base/'runtime/publication_jobs':
+                    paths += [(p, TOOLS[key]['name']+' / 发布子任务 / '+str(p.relative_to(shared_jobs)), key) for p in log_files(shared_jobs, True)]
             paths += [(p, TOOLS[key]['name'] + ' / ' + str(p.relative_to(base)), key) for p in candidates]
+            if key == 'analysis' and tool == 'analysis':
+                shared = self.folder('sync')
+                paths += [(p, TOOLS['analysis']['name']+' / '+str(p.relative_to(shared)), 'analysis')
+                          for p in log_files(shared/'runtime/file_analysis')]
         return paths
 
     def clear_logs(self, tool='', scope='history'):
@@ -850,7 +989,7 @@ class Manager:
             for key in ([tool] if tool else TOOLS):
                 if self.live(key) != 'stopped':
                     active.add(key)
-                if key == 'sync' and locked(self.folder(key) / 'runtime/file_analysis/worker.lock'):
+                if key in ('sync','analysis') and locked(self.folder('sync') / 'runtime/file_analysis/worker.lock'):
                     active.add(key)
             for path, label, owner in self.log_paths(tool):
                 try:
@@ -875,7 +1014,7 @@ class Manager:
         return result
 
     def logs(self, tool='', query='', level='', offset=0, limit=20, compact=True):
-        from log_progress import compact as compact_rows, deduplicate, severity, timestamp, events
+        from log_progress import compact as compact_rows, deduplicate, severity, timestamp, events, presentation
         with self.mutex:
             for identity,reader in list(self.output_threads.items()):
                 process=self.children.get(identity)
@@ -892,19 +1031,18 @@ class Manager:
         if query:
             named=[entry for entry in ordered if query.casefold() in entry[1].casefold()]
             ordered=named+[entry for entry in ordered if entry not in named]
-        for path, label, modified, owner in ordered:
+        available_sources = len(ordered)
+        for path, label, modified, owner in ordered[:80]:
             try:
-                rows=[]
-                for index, line in enumerate(events('\n'.join(tail(path).splitlines()[-1500:]))):
-                    if not line.strip():
-                        continue
-                    category=severity(line)
-                    if (level and level != category) or (query.casefold() not in line.casefold() and query.casefold() not in label.casefold()):
-                        continue
-                    rows.append(dict(id=hashlib.sha256(f'{path}:{index}'.encode()).hexdigest()[:20],
-                        level=category, created_at=timestamp(line,modified,BEIJING),
-                        source=label, tool=owner, message=clean_log(line)))
-                entries.extend(rows)
+                def parse():
+                    return [(line, dict(id=hashlib.sha256(f'{path}:{index}'.encode()).hexdigest()[:20],
+                                 level=severity(line), created_at=timestamp(line,modified,BEIJING),
+                                 source=label, tool=owner, message=clean_log(line)))
+                            for index, line in enumerate(events('\n'.join(tail(path).splitlines()[-1500:])))
+                            if line.strip()]
+                rows = LOG_CACHE.get(path, parse, (label, owner))
+                entries.extend(dict(row) for raw, row in rows if (not level or row['level'] == level)
+                               and (query.casefold() in raw.casefold() or query.casefold() in label.casefold()))
             except OSError:
                 continue
         before = len(entries)
@@ -916,8 +1054,12 @@ class Manager:
                 sources.setdefault(row['source'], []).append(row)
             entries = [row for rows in sources.values() for row in compact_rows(rows)]
         entries.sort(key=lambda row:row['created_at'],reverse=True)
-        return dict(items=entries[offset:offset + limit], total=len(entries),compact=compact,
-                    duplicates_merged=duplicates, scope='各日志文件最多读取尾部256KB及1500行；相同时间和内容的跨文件副本合并显示')
+        visible = entries[offset:offset + limit]
+        for row in visible:
+            row.update(presentation(row['message']))
+        return dict(items=visible, total=len(entries),compact=compact,
+                    duplicates_merged=duplicates, scanned_files=min(80,available_sources), available_files=available_sources,
+                    scope=f'本次读取最近 {min(80,available_sources)}/{available_sources} 个日志文件；文件名匹配优先，每文件最多尾部256KB及1500行；跨文件副本合并显示')
 
     def wechat_jobs(self):
         base = self.folder('wechat')

@@ -18,7 +18,12 @@ def run(base, day, kind, *, cancel_file=None, expected_generation=None):
         if (cancel_file.parent != base / 'runtime/codex_actions' or
                 cancel_file.resolve() != cancel_file or cancel_file.suffix != '.cancel'):
             raise ValueError('取消标记路径无效')
-    sys.path.insert(0, str(base / 'app'))
+    os.environ['PROJECT_DATA_HOME'] = str(base)
+    os.environ['PROJECT_MANAGER_HOME'] = str(Path(__file__).resolve().parent)
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools/资料解析及管理工具/app'))
+    if base.parent != Path(__file__).resolve().parents[1] / 'tools':
+        sys.path.insert(0, str(base / 'app'))
+    sys.path.insert(1, str(Path(__file__).resolve().parents[1] / 'tools/资料解析及管理工具'))
     from push_settings import load_settings
     from wechat_delivery import deliver
     from wechat_push.errors import DeliveryNotSent
@@ -65,7 +70,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--base', type=Path, required=True)
     parser.add_argument('--date', required=True)
-    parser.add_argument('--kind', choices=('text', 'briefing', 'all'), required=True)
+    parser.add_argument('--kind', choices=('text', 'briefing', 'drawings', 'all'), required=True)
     parser.add_argument('--cancel-file', type=Path)
     parser.add_argument('--expected-generation')
     args = parser.parse_args()

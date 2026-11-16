@@ -41,7 +41,7 @@ class CodexChatTests(unittest.TestCase):
         self.assertIn('没有授权发送', self.chat.snapshot(identity)['messages'][-1]['text'])
 
     def test_web_receives_shared_project_guide_and_fresh_snapshot_on_resumed_turn(self):
-        source = self.root/TOOLS['sync']['folder']
+        source = self.root / 'tools' / TOOLS['sync']['folder']
         (source/'runtime').mkdir(parents=True)
         (source/'downloads').mkdir()
         (source/'downloads/sample.txt').write_text('test', encoding='utf-8')
@@ -77,7 +77,7 @@ class CodexChatTests(unittest.TestCase):
 
     def test_shared_transport_and_directory_changes_apply_on_next_turn(self):
         folder=self.root/'shared project'
-        folder.mkdir()
+        folder.mkdir(parents=True)
         path=self.manager.config_path('wechat')
         path.write_text(json.dumps(dict(codex_command=['codex'],codex_transport='https',
             codex_auto_access_dirs=False,codex_access_dirs=[str(folder)])),encoding='utf-8')
@@ -228,8 +228,8 @@ class CodexChatTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root=Path(self.temp.name)
         (self.root/'fixture.txt').write_text('SIMULATION: shop=2, field=1',encoding='utf-8')
-        folder=self.root/TOOLS['wechat']['folder']
-        folder.mkdir()
+        folder=self.root / 'tools' / TOOLS['wechat']['folder']
+        folder.mkdir(parents=True)
         (folder/'wechat.codex.json').write_text('{"codex_command":["codex"]}',encoding='utf-8')
         self.manager=Manager(self.root,self.root/'runtime')
         self.command=[sys.executable,'-u',str(Path(__file__).with_name('fake_codex_server.py'))]

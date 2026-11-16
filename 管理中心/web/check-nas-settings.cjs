@@ -21,13 +21,13 @@ const server=http.createServer((req,res)=>{
     const errors=[];page.on('pageerror',e=>errors.push(e.message));
     let settings={source_root:'../FusionLive/downloads',download_ledger:'../FusionLive/runtime/ledger.sqlite3',
       target_root:'\\\\nas\\share',retry_attempts:2,chunk_bytes:1048576,preserve_previous_versions:true,
-      start_hour_beijing:12,stop_hour_beijing:0,verification_method:'ssh',remote_hash:{enabled:true,host:'192.168.32.177',port:22,
+      start_hour_beijing:12,stop_hour_beijing:0,ledger_update_interval_minutes:60,verification_method:'ssh',remote_hash:{enabled:true,host:'192.168.32.177',port:22,
         username:'windsky',root_path:'',identity_file:'runtime/ssh/nas_hash_ed25519',
         known_hosts_file:'runtime/ssh/known_hosts',python_command:'python3',timeout_seconds:3600,fallback_to_smb:false}};
-    let verified=false,fail=false;const actions=[];
+    let verified=false,fail=false,serverTime='2026-11-10T08:00:00+08:00';const actions=[];
     await page.route('**/api/**',async route=>{
       const url=new URL(route.request().url());
-      if(url.pathname==='/api/overview')return route.fulfill({json:{tools:[{id:'nas',name:'绿联云上传工具',state:'stopped',installed:true,actions:[]}],tasks:[]}});
+      if(url.pathname==='/api/overview')return route.fulfill({json:{time:serverTime,tools:[{id:'nas',name:'绿联云上传工具',state:'stopped',installed:true,actions:['start','upload-once','stop','check']}],tasks:[]}});
       if(url.pathname==='/api/config'){
         if(route.request().method()==='POST')settings=route.request().postDataJSON().data;
         return route.fulfill({json:{data:settings,revision:'fixture'}});
@@ -39,12 +39,19 @@ const server=http.createServer((req,res)=>{
         if(fail)return route.fulfill({status:400,json:{detail:'请先安全停止上传'}});
         verified=true;return route.fulfill({json:{id:'check1',state:'running'}});
       }
-      if(url.pathname==='/api/action')throw Error('Unexpected upload start');
+      if(url.pathname==='/api/action'){
+        const data=route.request().postDataJSON();
+        expect(data).toEqual({tool:'nas',action:'upload-once'});
+        actions.push('upload-once');return route.fulfill({json:{id:'manual-upload',state:'running'}});
+      }
       return route.fulfill({json:{items:[]}});
     });
     await page.goto(`http://127.0.0.1:${server.address().port}/#nas`);
     await page.getByRole('button',{name:'配置设置',exact:true}).click();
     const region=page.getByRole('region',{name:'NAS本机校验设置'});
+    await expect(region.getByText(/通过 SSH 执行目录扫描、批量创建、大小写更名、多余文件归档和空目录清理/)).toBeVisible();
+    const interval=page.getByRole('spinbutton',{name:'文件台账最短更新间隔',exact:true});
+    await expect(interval).toHaveValue('60');await interval.fill('120');
     await expect(region.getByRole('textbox',{name:'SSH 地址',exact:true})).toHaveValue('192.168.32.177');
     await expect(region.getByRole('textbox',{name:'SSH 用户名',exact:true})).toHaveValue('windsky');
     await expect(region.getByRole('button',{name:'保存并检查连接',exact:true})).toBeDisabled();
@@ -56,11 +63,13 @@ const server=http.createServer((req,res)=>{
     await expect(region.getByRole('textbox',{name:'NAS 内部目录（自动识别）',exact:true})).toHaveCount(0);
     const method=region.getByRole('combobox',{name:'文件校验方式',exact:true});
     await method.locator('..').click();await page.getByRole('option',{name:'SMB 完整回读校验',exact:true}).click();
+    await expect(region.getByText(/通过 SSH 执行目录扫描/)).toHaveCount(0);
     await expect(region.getByRole('textbox',{name:'SSH 地址',exact:true})).toHaveCount(0);
     await method.locator('..').click();await page.getByRole('option',{name:'SSH 本机校验（默认）',exact:true}).click();
     await region.getByRole('button',{name:'保存并检查连接',exact:true}).click();
     await expect(region.getByText('已保存配置：SSH认证与目录映射检查通过')).toBeVisible();
     expect(settings.verification_method).toBe('ssh');expect(settings.remote_hash.fallback_to_smb).toBe(false);
+    expect(settings.ledger_update_interval_minutes).toBe(120);
     expect(settings.remote_hash.enabled).toBe(true);expect(settings.remote_hash.root_path).toBe('/volume1/share');
     await page.reload();await page.getByRole('button',{name:'配置设置',exact:true}).click();
     await region.getByRole('button',{name:'密钥与连接选项',exact:true}).click();
@@ -73,6 +82,16 @@ const server=http.createServer((req,res)=>{
       await region.scrollIntoViewIfNeeded();
       await page.screenshot({path:path.join(shots,`nas-settings-${width}.png`),fullPage:true});
     }
-    expect(errors).toEqual([]);console.log('PASS NAS settings save/reload, setup, explicit check, errors, metrics and responsive layout');
+    await page.setViewportSize({width:1440,height:1100});
+    await page.getByRole('button',{name:'运行管理',exact:true}).click();
+    const manual=page.getByRole('button',{name:'上传一次',exact:true});
+    page.once('dialog',async dialog=>{expect(dialog.message()).toContain('当前不在自动上传时段');await dialog.dismiss()});
+    await manual.click();await expect(manual).toBeEnabled();
+    expect(actions.filter(x=>x==='upload-once')).toHaveLength(0);
+    page.once('dialog',dialog=>dialog.accept());await manual.click();
+    await expect.poll(()=>actions.filter(x=>x==='upload-once').length).toBe(1);
+    await expect(manual).toBeEnabled();serverTime='2026-11-10T13:00:00+08:00';
+    await manual.click();await expect.poll(()=>actions.filter(x=>x==='upload-once').length).toBe(2);
+    expect(errors).toEqual([]);console.log('PASS NAS settings/ledger interval save/reload, outside-window manual confirmation/cancel, in-window manual run, setup, metrics and responsive layout');
   }finally{await browser.close();await new Promise(resolve=>server.close(resolve))}
 })().catch(e=>{console.error(e);server.close();process.exitCode=1});

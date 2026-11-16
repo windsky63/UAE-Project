@@ -28,7 +28,7 @@ class ProjectToolTests(unittest.TestCase):
         self.base = self.manager.folder('sync')
         (self.base/'runtime').mkdir(parents=True)
         self.config = {'wechat':{'codex_access_dirs':[str(self.base)]},
-                       'sync':{'enabled':True, 'recipients':['configured-chat'], 'publish_briefing':True}}
+                       'analysis':{'enabled':True, 'recipients':['configured-chat'], 'publish_briefing':True}}
         self.configuration = patch.object(self.manager, 'config', side_effect=lambda tool: {'data':self.config[tool]})
         self.configuration.start(); self.addCleanup(self.configuration.stop)
         self.tools = ProjectTools(self.manager, self.root/'admin/runtime/tools.sqlite3')
@@ -68,7 +68,7 @@ class ProjectToolTests(unittest.TestCase):
         with patch.object(self.manager,'action',side_effect=self.launch):
             self.tools.execute('s','r',text,{'action':'generate_and_send'})
             self.assertEqual(self.actions[0][1],'briefing-send')
-            self.config['sync']['recipients']=[]
+            self.config['analysis']['recipients']=[]
             with self.assertRaises(ValueError):
                 self.tools.execute('s','r2',text,{'action':'generate_and_send'})
             self.config['wechat']['codex_access_dirs']=[]
@@ -86,7 +86,7 @@ class ProjectToolTests(unittest.TestCase):
 
     def test_manager_constructs_fixed_noninteractive_commands(self):
         with patch.object(self.manager,'python',return_value=sys.executable):
-            command, cwd=self.manager.command('sync','briefing-send')
+            command, cwd=self.manager.command('analysis','briefing-send')
         self.assertIn('--send', command)
         self.assertIn('briefing_runner.py',command[2])
         self.assertEqual(cwd,self.base)
@@ -117,7 +117,7 @@ class BriefingWorkflowTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             code=run(self.base,self.job,True,execute=self.execute,report_loader=self.marker)
         self.assertEqual(code,0)
-        self.assertEqual(self.calls[0][-1],'analysis_worker')
+        self.assertIn('analysis_worker',self.calls[0])
         self.assertIn('briefing',self.calls[1])
         self.assertIn('--expected-generation',self.calls[2])
         self.assertEqual(self.result()['phase'],'submitted')
@@ -172,7 +172,7 @@ class BriefingWorkflowTests(unittest.TestCase):
         package=app/'wechat_push';package.mkdir();(package/'__init__.py').touch()
         (package/'errors.py').write_text('class DeliveryNotSent(Exception):pass\n',encoding='utf-8')
         result=subprocess.run([sys.executable,'-B',str(Path(__file__).resolve().parents[1]/'briefing_runner.py'),
-            '--base',str(self.base),'--job-id',self.job,'--send'],capture_output=True,text=True,encoding='utf-8',timeout=15)
+            '--base',str(self.base),'--analysis-home',str(self.base),'--job-id',self.job,'--send'],capture_output=True,text=True,encoding='utf-8',env={**__import__('os').environ,'PYTHONUTF8':'1'},timeout=15)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         self.assertEqual((self.base/'stages.txt').read_text().splitlines(),['analysis_worker','briefing'])
         self.assertTrue((self.base/'fixture-sender-called.txt').is_file())

@@ -1,0 +1,146 @@
+{
+  "components": {
+    "manager": {
+      "directory": "管理中心",
+      "tests": [
+        "tests/test_*.py"
+      ]
+    },
+    "sync": {
+      "directory": "tools/FusionLive同步工具",
+      "tests": [
+        "tests/test_*.py"
+      ],
+      "pythonpath": "app"
+    },
+    "ima": {
+      "directory": "tools/Ima知识库管理",
+      "tests": [
+        "tests/test_*.py"
+      ]
+    },
+    "wechat": {
+      "directory": "tools/codex-wechat",
+      "tests": [
+        "tests/test_*.py"
+      ]
+    },
+    "nas": {
+      "directory": "tools/绿联云上传工具",
+      "tests": [
+        "test_*.py"
+      ]
+    },
+    "analysis": {
+      "directory": "tools/资料解析及管理工具",
+      "tests": [
+        "tests/test_*.py"
+      ],
+      "pythonpath": "app"
+    }
+  },
+  "areas": {
+    "quick": {
+      "manager": [
+        "tests/test_project_layout.py"
+      ]
+    },
+    "layout": {
+      "manager": [
+        "tests/test_project_layout.py",
+        "tests/test_launcher.py",
+        "tests/test_install_encoding.py"
+      ]
+    },
+    "ima": {
+      "ima": [
+        "tests/test_*.py"
+      ],
+      "manager": [
+        "tests/test_ima_control.py",
+        "tests/test_bulk_and_task_cleanup.py"
+      ]
+    },
+    "ima-ui": {
+      "manager": [
+        "tests/test_ima_control.py",
+        "tests/test_log_cleanup.py"
+      ]
+    },
+    "overview": {
+      "manager": [
+        "tests/test_manager.py"
+      ]
+    },
+    "tool-controls": {
+      "manager": [
+        "tests/test_bulk_and_task_cleanup.py",
+        "tests/test_manager.py"
+      ]
+    },
+    "logging": {
+      "manager": [
+        "tests/test_log_*.py",
+        "tests/test_bulk_and_task_cleanup.py"
+      ]
+    },
+    "file-counts": {
+      "manager": [
+        "tests/test_download_stats.py"
+      ]
+    },
+    "daily-text": {
+      "sync": [
+        "tests/test_daily_push.py",
+        "tests/test_download_text_hook.py"
+      ]
+    },
+    "analysis": {
+      "analysis": [
+        "tests/test_local_analysis.py",
+        "tests/test_analysis_worker.py",
+        "tests/test_briefing.py",
+        "tests/test_drawing_briefing.py"
+      ],
+      "manager": [
+        "tests/test_refactor_boundaries.py"
+      ]
+    },
+    "drawing-delivery": {
+      "analysis": [
+        "tests/test_drawing_file_delivery.py",
+        "tests/test_snapshot_service.py"
+      ],
+      "manager": [
+        "tests/test_drawing_delivery_config.py",
+        "tests/test_refactor_boundaries.py"
+      ]
+    },
+    "shared-core": {
+      "sync": [
+        "tests/test_business_type.py",
+        "tests/test_daily_push.py",
+        "tests/test_ledger_workbook.py",
+        "tests/test_runtime_logging.py"
+      ],
+      "analysis": [
+        "tests/test_runtime_logging.py"
+      ],
+      "manager": [
+        "tests/test_shared_implementations.py"
+      ]
+    },
+    "independence": {
+      "manager": [
+        "tests/test_tool_independence.py",
+        "tests/test_managed_scope_contract.py",
+        "tests/test_refactor_boundaries.py",
+        "tests/test_shared_implementations.py"
+      ]
+    }
+  },
+  "ui": [
+    "check-ima.cjs",
+    "check-overview-cards.cjs"
+  ]
+}

@@ -21,7 +21,7 @@ class FileCatalogTests(unittest.TestCase):
         self.manager=Manager(self.root,self.root/'admin-runtime')
         self.base=self.manager.folder('sync')
         for name in ('runtime','downloads','app'):(self.base/name).mkdir(parents=True,exist_ok=True)
-        actual=Path(__file__).resolve().parents[2]/TOOLS['sync']['folder']
+        actual=Path(__file__).resolve().parents[2]/'tools'/TOOLS['sync']['folder']
         for name in ('app/business_type.py','document_coding_rules.json'):
             shutil.copyfile(actual/name,self.base/name)
         self.ledger=self.base/'runtime/ledger.sqlite3'
@@ -104,7 +104,7 @@ class FileCatalogTests(unittest.TestCase):
         self.assertTrue(all(r['business_type']=='规则未就绪' for r in result['items']))
 
     def test_member_ledger_search_filters_preview_and_parent_version_checks(self):
-        actual=Path(__file__).resolve().parents[2]/TOOLS['sync']['folder']
+        actual=Path(__file__).resolve().parents[2]/'tools'/TOOLS['sync']['folder']
         shutil.copyfile(actual/'app/archive_index.py',self.base/'app/archive_index.py')
         with closing(sqlite3.connect(self.ledger)) as db, db:
             parent=db.execute("SELECT filename,path FROM files WHERE id='30'").fetchone()

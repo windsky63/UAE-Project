@@ -16,13 +16,13 @@ from server import handler
 with tempfile.TemporaryDirectory(prefix='transport-ui-', dir=HOME/'runtime') as directory:
     root = Path(directory)
     (root/'fixture.txt').write_text('SIMULATION: shop=2, field=1', encoding='utf-8')
-    config = root/TOOLS['wechat']['folder']
+    config = root / 'tools' / TOOLS['wechat']['folder']
     config.mkdir()
     package=config/'wechat_local'
     package.mkdir()
     (package/'__init__.py').write_text('',encoding='utf-8')
     for name in ('config.py','codex_settings.py'):
-        shutil.copyfile(HOME.parent/'codex-wechat/wechat_local'/name,package/name)
+        shutil.copyfile(HOME.parent/'tools' / 'codex-wechat/wechat_local'/name,package/name)
     (root/'shared-documents/subset').mkdir(parents=True)
     (config/'wechat.codex.json').write_text('{"codex_command":["codex"]}', encoding='utf-8')
     manager = Manager(root, root/'admin-runtime')

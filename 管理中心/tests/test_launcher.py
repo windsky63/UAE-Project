@@ -18,9 +18,10 @@ class LauncherTests(unittest.TestCase):
         self.root.mkdir()
         self.cmd=self.root/'打开管理中心.cmd'
         shutil.copyfile(ROOT/'打开管理中心.cmd',self.cmd)
-        shutil.copyfile(ROOT/'admin_launcher.py',self.root/'admin_launcher.py')
         self.app=self.root/'管理中心'
         (self.app/'web/dist').mkdir(parents=True)
+        shutil.copyfile(ROOT/'管理中心/launcher.py',self.app/'launcher.py')
+        shutil.copyfile(ROOT/'管理中心/project_layout.py',self.app/'project_layout.py')
         (self.app/'web/dist/index.html').write_text('<html></html>',encoding='utf-8')
         # Prefer the same interpreter as the test runner, without relying on PATH.
         # Use a real venv redirector, not a copied executable alone.
@@ -40,7 +41,7 @@ class LauncherTests(unittest.TestCase):
         source=self.cmd.read_bytes()
         source.decode('ascii')
         self.assertNotIn(b'\n',source.replace(b'\r\n',b''))
-        self.assertIn(b'admin_launcher.py',source)
+        self.assertIn(b'launcher.py',source)
 
     @unittest.skipUnless(os.name=='nt','CMD integration runs on Windows')
     def test_real_cmd_passes_unicode_paths_arguments_and_utf8_environment(self):
@@ -53,7 +54,7 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         self.assertIn('LAUNCH_OK',result.stdout)
         data=json.loads((self.app/'launched.json').read_text(encoding='utf-8'))
-        self.assertEqual(data,dict(args=['--no-browser','--port','8769'],utf8='1',encoding='utf-8'))
+        self.assertEqual(data,dict(args=['--lan','--no-browser','--port','8769'],utf8='1',encoding='utf-8'))
         self.assertTrue((self.app/'runtime/launcher.log').is_file())
 
     @unittest.skipUnless(os.name=='nt','CMD integration runs on Windows')

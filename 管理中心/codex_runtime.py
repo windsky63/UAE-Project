@@ -2,7 +2,7 @@
 import importlib.util
 from pathlib import Path
 
-_path = Path(__file__).resolve().parent.parent / 'codex-wechat/wechat_local/codex_settings.py'
+_path = Path(__file__).resolve().parent.parent / 'tools' / 'codex-wechat/wechat_local/codex_settings.py'
 _spec = importlib.util.spec_from_file_location('project_codex_settings', _path)
 _module = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_module)

@@ -14,7 +14,7 @@ async function clear() {
     let summary = `已清除 ${result.deleted} 个日志文件，释放 ${(result.freed_bytes / 1024 / 1024).toFixed(2)} MB；保留 ${result.kept} 个当日日志，跳过 ${result.skipped} 个运行中或受保护日志。`
     if (result.errors?.length) summary += ` ${result.errors.length} 个文件清理失败：` + result.errors.slice(0,3).map(item => `${item.source}：${item.reason}`).join('；')
     opened.value = false
-    emit('notice', summary)
+    emit('notice', summary, !!result.errors?.length)
     emit('cleared', summary, result)
   } catch (error) { failure.value = error.message }
   finally { busy.value = false }

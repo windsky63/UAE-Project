@@ -1,0 +1,7 @@
+{
+  "progress_seconds": 30,
+  "idle_seconds": 300,
+  "max_bytes": 5242880,
+  "backups": 4,
+  "detailed": false
+}

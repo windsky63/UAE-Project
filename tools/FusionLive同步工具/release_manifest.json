@@ -1,0 +1,232 @@
+{
+  "format": 1,
+  "release": "2026.11.04-owner-updates.1",
+  "generated_at_beijing": "2026-11-11T10:40:36.203614+08:00",
+  "description": "Current cumulative runtime: indexed history retention; shared automatic/manual extraction-cache cleanup with explicit cross-ID document lineage.",
+  "schedule_beijing": "02:00-10:30",
+  "automatic_download_without_scope_confirmation": false,
+  "resume_inventory_only": false,
+  "files": {
+    ".gitignore": {
+      "sha256": "6b6ae1cc11bc42c21c49efdf0b1f02973a07be920cc0865709f3e17e3bdb116f",
+      "bytes": 239
+    },
+    "app/archive_index.py": {
+      "sha256": "2e7bf753fce61259fede4afb138b5e979f212ffb5a6fc8393bf58cc181e0f5cb",
+      "bytes": 6784
+    },
+    "app/business_type.py": {
+      "sha256": "d0956d044b9e79f2cf219d2ca3bd20f9be621ddcc37e4c29dd7aaf84805bce8a",
+      "bytes": 14161
+    },
+    "app/chunked_download.py": {
+      "sha256": "2842215bb281c34d0db7c31dd039754f9e962326e2638567a3ce72f8658d7c2a",
+      "bytes": 7140
+    },
+    "app/download_diagnostics.py": {
+      "sha256": "b08dddc41daa2869c64ff241839ec685f388da935e1c787908ca4ebaed53a43d",
+      "bytes": 3373
+    },
+    "app/download_handoff.py": {
+      "sha256": "b714c5c56a8431930193f2b0b074da1f782138976593aae623d370e22bde7e54",
+      "bytes": 1809
+    },
+    "app/file_inventory.py": {
+      "sha256": "90920791b4b35a155a1e8ee8dbab8c2055a68ac8dba14264c5a2b19d77b57adc",
+      "bytes": 4721
+    },
+    "app/file_layout.py": {
+      "sha256": "de18b8a8c0698bbcdbcaf072f0ca649b1bab62757a94f28708c4cbe74257faaf",
+      "bytes": 85065
+    },
+    "app/fusion_client.py": {
+      "sha256": "ff76e5ce6cdeefb65b88a94f87ccfdf02124645ef4b170a726865e30adb3b5a8",
+      "bytes": 33155
+    },
+    "app/gui.py": {
+      "sha256": "b99de3cc5b7757c7090f59a7fb2a6a6a64c15d8ce0d7faab76e4a60796015873",
+      "bytes": 1090
+    },
+    "app/history_repair.py": {
+      "sha256": "1fb94584c4a4ed8406a6240ad8a30247f0286be399e536898c2eb8f621233122",
+      "bytes": 14563
+    },
+    "app/history_retention.py": {
+      "sha256": "ac47e9656a9e98dee27b4797be8a805c4d029613f63998f8d1a4c23bb59f95dc",
+      "bytes": 24376
+    },
+    "app/inventory.py": {
+      "sha256": "410f6a9515b4afb630d379ef1e086d53cd008927f27dcbf665ee5a856bddf622",
+      "bytes": 24558
+    },
+    "app/ledger.py": {
+      "sha256": "a6d579aa6b87f3b28d51938b533633a116d5b286c3a1fb647855f513e3bb8ea5",
+      "bytes": 19430
+    },
+    "app/ledger_export.py": {
+      "sha256": "1cf9f3779545886f77c0cd7314b3037c48a4423891e4dd3208e167531be56c6a",
+      "bytes": 953
+    },
+    "app/ledger_workbook.py": {
+      "sha256": "d80f0aaec484ed01a3d060144cc2e44fbc3b72d052c4845d582d1a069598f82b",
+      "bytes": 15690
+    },
+    "app/local_credentials.example.py": {
+      "sha256": "990a5164e73f854ba18e3bf3f881309e44808112ea917484865a43b517960528",
+      "bytes": 248
+    },
+    "app/local_credentials.py": {
+      "sha256": "285c49a73d5b29afc7c26008e08cc8be7e1d3f59e9a478584c927588c374d1a9",
+      "bytes": 339
+    },
+    "app/local_reconcile.py": {
+      "sha256": "ebba557861ff02ef05d1d1e462abf00f935192190512d1b633534f38b3c80a87",
+      "bytes": 19889
+    },
+    "app/log_policy.py": {
+      "sha256": "fe4a0b834bf55ef521cbb00afc9ae2166920c251f8d2ccab86932f60d8f7ceba",
+      "bytes": 11971
+    },
+    "app/login_test.py": {
+      "sha256": "57c64e30b10c972afd5d63806e4e608c40cfb460db91d6d4c716847ab1dfb7a7",
+      "bytes": 3589
+    },
+    "app/logout_watchdog.py": {
+      "sha256": "a794f99df5563e57293756205ac65fcb7b48e559fac0073c866e6b82c9abcb5d",
+      "bytes": 1688
+    },
+    "app/migration_recovery.py": {
+      "sha256": "fe76ab31a5348df25d454258f22728d124d847304956862af0fc6f73affb928d",
+      "bytes": 5250
+    },
+    "app/path_maintenance.py": {
+      "sha256": "20226745f4668adc8894f50fd830e17b1049cc9c177030f2b02f526594d19e70",
+      "bytes": 14895
+    },
+    "app/path_maintenance_launcher.py": {
+      "sha256": "26dffc6937d7675b91d2a8f2269368505b2d208682bbabb37db97f5df86da642",
+      "bytes": 2712
+    },
+    "app/paths.py": {
+      "sha256": "0946902140a2b1fceed36382bd0790c44f74c40423f6abf10baf0166f159b68f",
+      "bytes": 3247
+    },
+    "app/preflight.py": {
+      "sha256": "a3f337c064e459d37f8892a23867e00d5bf7d7fbff2cb8e8a8f0e90318283882",
+      "bytes": 17427
+    },
+    "app/progress.py": {
+      "sha256": "8381263d855a53bc0b70ffa8e9d3d361662e830d5cc768ad737ace676efcc730",
+      "bytes": 6622
+    },
+    "app/reporting.py": {
+      "sha256": "3487c9cacf54d0f6ed9de09efa8abeafb9813a7c350be603ef77e11b391334bd",
+      "bytes": 45056
+    },
+    "app/runtime_logging.py": {
+      "sha256": "fbc5ec9ebf29ff83c032c7abb01f52b5e417712b2172017aa403a7d4772be5bf",
+      "bytes": 5438
+    },
+    "app/scheduler.py": {
+      "sha256": "3a4652e16186ac69e0c3690d02807e929e4b31a480bc3a2b4ab7b7ec6fd0fff8",
+      "bytes": 18291
+    },
+    "app/scope_review.py": {
+      "sha256": "133949c993b2ef7a4baf04f7168214e0f7d80d583c2fba1efc3c75f01d1b952c",
+      "bytes": 5407
+    },
+    "app/sync.py": {
+      "sha256": "082c334cb5502155645f0c85af058143602911c59c41b1b71b983db115abdbac",
+      "bytes": 64182
+    },
+    "app/workflow.py": {
+      "sha256": "f9f1340d5bf7954e7fb8a596f930c6afa5f847ad053672600b6fe7e5c01790ab",
+      "bytes": 18044
+    },
+    "app/台账.py": {
+      "sha256": "6c5d0a5f9f363b093ed358eab7804f2e7976d603fd4b88614d1e62e21e2d6102",
+      "bytes": 29145
+    },
+    "approved_download_plan.json": {
+      "sha256": "200e9c6a81d7171fd079b46eaa76ed4d3b5bc6a00d91ad8d9071e28fda1e808c",
+      "bytes": 514
+    },
+    "document_coding_rules.json": {
+      "sha256": "1dd7f736f2bcf21c5e8c7bd0322c7f8ad9a31ff27b2e9d385f96f4d1d824a27c",
+      "bytes": 83965
+    },
+    "main.py": {
+      "sha256": "a40c3ac9ac4b1f18ba9f334aa6607b0305427cf9d4826b343de181e98ca89e27",
+      "bytes": 986
+    },
+    "maintenance/启动续读盘点.cmd": {
+      "sha256": "12ddeffae0963862206587f156eca8781b971ea63c8056a0c4b521a8fdbaaff6",
+      "bytes": 478
+    },
+    "maintenance/安装依赖.cmd": {
+      "sha256": "f5b3ea73fdb7375a40d5d77915f71c70e89c042151fed4d99d70772f970bddb6",
+      "bytes": 537
+    },
+    "maintenance/检查程序完整性.cmd": {
+      "sha256": "c2e73bdddef4196e8e6f74a0c3ddb888cac9c848aad04f9875a0e3d2103b1c35",
+      "bytes": 227
+    },
+    "pytest.ini": {
+      "sha256": "3f8d5b0a0f389c0e047ee6f4b886a93c3aab9514e79fc4949002823212bd4caa",
+      "bytes": 182
+    },
+    "README.md": {
+      "sha256": "ae8f66d207baaa9638a46bafd3dcc3e69461ccaa999c27e1d76aa35544a424ee",
+      "bytes": 4282
+    },
+    "requirements.txt": {
+      "sha256": "3602d1f59a9c5ac9b43a6a3c1e532e158ace58206c3673f2904fc838208594d1",
+      "bytes": 477
+    },
+    "启动正式下载.cmd": {
+      "sha256": "4838ec7e24de768cd5bfc2400ab4f9508f999c4988e5509741d2ee25b5616802",
+      "bytes": 594
+    },
+    "安全退出.cmd": {
+      "sha256": "90dc8c09b20cbd38b4e51e8d4ca7ccfc4100481b7162084f8db90eb9c5a40416",
+      "bytes": 306
+    },
+    "打开文件台账.cmd": {
+      "sha256": "1fb110837d9d430233fd3d2ec6f25e24e08d96fb419528f5f78f8cbd8b02f98c",
+      "bytes": 381
+    },
+    "整理文件目录.cmd": {
+      "sha256": "b8719bb736aade4e06223e35daa0f2eff7e8b6368d3eee62be5e05a6c9bb6c15",
+      "bytes": 1287
+    },
+    "紧急停止.cmd": {
+      "sha256": "013be147d127f2e5432934887a1e6a2f89d93b5b4b13243096f30975529d9d40",
+      "bytes": 169
+    }
+  },
+  "initial_inventory_exception_version_ids": [
+    "29935588"
+  ],
+  "daily_inventory_before_download": true,
+  "daily_push_encoding": "utf-8-sig",
+  "briefing_prepare_beijing": "10:40",
+  "wechat_push_beijing": "11:00",
+  "ncc_statistics_basis": "current content ID: downloaded latest or one newest available downloaded predecessor; directory extras excluded",
+  "download_priority_units": [
+    213,
+    27,
+    37,
+    38,
+    39
+  ],
+  "download_priority_order": [
+    "priority_units",
+    "new_files",
+    "updated_files"
+  ],
+  "patch_release": "2026.11.09-parser-output-reuse.1",
+  "patch_generated_at_beijing": "2026-11-09T22:18:19.887713+08:00",
+  "patch_description": "Reuse unit JSON/manifest output and guarded output cleanup between PCF and IDF parsers.",
+  "patch_previous_release": "2026.11.08-history-status-retry.5",
+  "deployment_snapshot": "2026.11.16-layout-v1"
+}

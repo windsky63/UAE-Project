@@ -40,33 +40,21 @@ onUnmounted(()=>{alive=false;clearInterval(timer)})
 </script>
 
 <template>
-  <v-card class="mb-6 pa-5 history-cleanup-panel" aria-label="历史文件手动清理">
-    <div class="d-flex align-center justify-space-between flex-wrap ga-3 mb-3">
-      <h2>历史文件清理</h2><v-chip size="small" :color="status.state==='failed'?'error':active?'primary':'secondary'">{{submitted?'已提交':names[status.state]||status.state}}</v-chip>
-    </div>
-    <p class="section-subtitle mb-4">仅手动执行，不随下载或定时任务自动清理。保留初次下载内容和最近两次旧内容；仍被引用或无法核验的文件保留。</p>
-    <div class="d-flex flex-wrap ga-3 mb-4">
-      <v-btn color="primary" prepend-icon="mdi-broom" :loading="busy&&!active" :disabled="busy||active" @click="start">清理历史文件</v-btn>
-      <v-btn v-if="active" variant="outlined" prepend-icon="mdi-stop-circle-outline" :loading="busy&&active" :disabled="busy||!!submitted" @click="stop">停止清理</v-btn>
-      <v-btn variant="text" :disabled="busy" @click="refresh">刷新清理进度</v-btn>
-    </div>
-    <p class="text-caption text-secondary mb-3">执行前请安全停止下载、后台解析和文件投递；清理前自动备份台账。</p>
-    <v-alert v-if="failure" type="error" variant="tonal" class="mb-3">{{failure}}</v-alert>
-    <div v-if="status.job_id||submitted" aria-live="polite">
-      <v-progress-linear v-if="active" indeterminate color="primary" class="mb-3"/>
-      <p v-if="active" class="mb-2">{{submitted?'正在启动后台任务…':status.phase||'正在核验文件'}}</p>
-      <div class="d-flex flex-wrap ga-5 text-body-2">
-        <span>登记候选 <strong>{{number(status.planned_files)}}</strong></span>
-        <span>实际删除 <strong>{{number(status.deleted_files)}}</strong></span>
-        <span>释放空间 <strong>{{space(status.deleted_bytes)}}</strong></span>
-        <span>跳过 <strong>{{number(status.skipped_files)}}</strong></span>
+  <div class="maintenance-action">
+    <v-btn variant="outlined" prepend-icon="mdi-broom" :loading="busy&&!active" :disabled="busy||active" @click="start">清理历史文件</v-btn>
+    <v-btn v-if="active" variant="outlined" prepend-icon="mdi-stop-circle-outline" :loading="busy&&active" :disabled="busy||!!submitted" @click="stop">停止清理</v-btn>
+    <Teleport defer to="#tool-task-progress">
+      <div v-if="status.job_id||submitted||failure" class="mt-4" aria-label="历史文件手动清理" aria-live="polite">
+        <div class="d-flex align-center ga-3 mb-2"><strong>历史文件清理</strong><v-chip size="small" :color="status.state==='failed'?'error':active?'primary':'secondary'">{{submitted?'已提交':names[status.state]||status.state}}</v-chip></div>
+        <p class="text-caption text-secondary mb-3">保留初次下载和最近两次旧内容；仍被引用或无法核验的文件保留。</p>
+        <v-progress-linear v-if="active" indeterminate color="primary" class="mb-3"/>
+        <p v-if="active" class="mb-2">{{submitted?'正在启动后台任务…':status.phase||'正在核验文件'}}</p>
+        <div class="d-flex flex-wrap ga-5 text-body-2"><span>登记候选 <strong>{{number(status.planned_files)}}</strong></span><span>实际删除 <strong>{{number(status.deleted_files)}}</strong></span><span>释放空间 <strong>{{space(status.deleted_bytes)}}</strong></span><span>跳过 <strong>{{number(status.skipped_files)}}</strong></span></div>
+        <p v-if="active&&status.current_file" class="text-caption text-secondary mt-3 cleanup-current-file">{{status.current_file}}</p>
+        <p v-if="status.message" class="text-body-2 mt-3">{{status.message}}</p>
+        <v-alert v-if="failure" type="error" variant="tonal" class="mt-3">{{failure}}</v-alert>
       </div>
-      <p v-if="active&&status.current_file" class="text-caption text-secondary mt-3 cleanup-current-file">{{status.current_file}}</p>
-      <p v-if="status.message" class="text-body-2 mt-3">{{status.message}}</p>
-    </div>
-  </v-card>
+    </Teleport>
+  </div>
 </template>
-
-<style scoped>
-.cleanup-current-file { overflow-wrap:anywhere; }
-</style>
+<style scoped>.maintenance-action{display:contents}.cleanup-current-file{overflow-wrap:anywhere}</style>

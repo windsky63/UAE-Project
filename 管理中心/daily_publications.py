@@ -9,7 +9,7 @@ import importlib.util
 
 BEIJING = timezone(timedelta(hours=8))
 
-_source = Path(__file__).resolve().parents[1]/'FusionLive同步工具/app/file_inventory.py'
+_source = Path(__file__).resolve().parents[1]/'tools' / 'FusionLive同步工具/app/file_inventory.py'
 _spec = importlib.util.spec_from_file_location('shared_project_file_inventory',_source)
 _inventory = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_inventory)
@@ -102,12 +102,13 @@ def load_report(base, day):
 
 
 def selected_settings(settings, kind):
-    if kind not in ('text', 'briefing', 'all'):
+    if kind not in ('text', 'briefing', 'drawings', 'all'):
         raise ValueError('推送类型无效')
     # Keep saved global and per-recipient switches; manual only relaxes the clock window.
     data = dict(settings)
     for key, wanted in (('publish_text', kind in ('text', 'all')),
-                        ('publish_briefing', kind in ('briefing', 'all'))):
+                        ('publish_briefing', kind in ('briefing', 'all')),
+                        ('publish_drawings', kind in ('drawings', 'all'))):
         data[key] = bool(settings.get(key, settings.get('enabled', True))) and wanted
     return data
 
@@ -120,8 +121,9 @@ def targets(settings, kind):
         flags = local.get(name, {})
         text = data['publish_text'] and flags.get('publish_text', True)
         report = data['publish_briefing'] and flags.get('publish_briefing', True)
-        if text or report:
-            result.append(dict(name=name, text=bool(text), briefing=bool(report)))
+        drawing = data['publish_drawings'] and flags.get('publish_drawings', False)
+        if text or report or drawing:
+            result.append(dict(name=name, text=bool(text), briefing=bool(report or drawing), pipeline=bool(report), drawings=bool(drawing)))
     return result
 
 
@@ -181,11 +183,20 @@ def snapshot(base, day='', settings=None):
     except (OSError, ValueError, TypeError, AttributeError) as exc:
         result['targets'] = []
         errors.append('发布配置读取失败：' + str(exc))
-    for kind, is_text in (('text', True), ('briefing', False)):
+    for name,drawing in (('pipeline',False),('drawings',True)):
+        content=dict(result['briefing'])
+        content['images']=[i for i in result['briefing']['images'] if (i.get('kind')=='drawing')==drawing]
+        content['ready']=bool(result['briefing']['ready'] and content['images'])
+        if not content['images']:content['reason']=content.get('reason') or ('图纸简报尚未生成' if drawing else '管道简报尚未生成')
+        result[name]=content
+    for kind, is_text in (('text', True), ('briefing', False),('pipeline',False),('drawings',False)):
         content = result[kind]
         records = [row for row in result['deliveries'] if (row['page'] == 0) == is_text]
+        if kind=='pipeline':records=[r for r in records if 0<r['page']<10001]
+        if kind=='drawings':records=[r for r in records if r['page']>=10001]
+        pages = [(0, sha) for sha in content.get('hashes', [])] if is_text else [(image.get('page', i), image['sha256']) for i, image in enumerate(content.get('images', []), 1)]
         expected = [(target['name'], page, sha) for target in result['targets'] if target['text' if is_text else 'briefing']
-                    for page, sha in enumerate(content.get('hashes', []), 0 if is_text else 1)]
+                    for page, sha in pages if is_text or target.get('drawings' if page >= 10001 else 'pipeline', False)]
         lookup = {(row['recipient'], row['page']): row for row in records}
         matched = [lookup.get((name, page), {}) for name, page, sha in expected]
         if journal_error:
@@ -218,6 +229,8 @@ def prepare_manual(base, day, kind, settings):
     marker = load_report(base, day) if needs_report else dict(date=day, ready=True, demo=False,
                 generated_at=datetime.now(BEIJING).isoformat(), images=[])
     marker = dict(marker)
+    if any(t.get('drawings') for t in active) and not any(i.get('kind') == 'drawing' for i in marker.get('images', [])):
+        raise ValueError('图纸简报尚未生成，请重新生成当天简报')
     if needs_text:
         text,text_marker=live_text(base,require_ready=True)
         if not text_marker.get('ready'):

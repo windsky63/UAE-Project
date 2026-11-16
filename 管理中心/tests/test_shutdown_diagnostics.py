@@ -22,7 +22,7 @@ class ShutdownDiagnosticsTests(unittest.TestCase):
     def test_existing_stop_marker_and_logs_are_preserved(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            runtime = root / 'FusionLive同步工具/runtime'
+            runtime = root / 'tools' / 'FusionLive同步工具/runtime'
             runtime.mkdir(parents=True)
             marker = runtime / 'scheduler.exit.request'
             marker.write_text('stop requested', encoding='utf-8')
